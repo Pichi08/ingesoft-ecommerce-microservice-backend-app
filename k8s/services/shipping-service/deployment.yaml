@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipping-service
+  namespace: ecommerce-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shipping-service
+  template:
+    metadata:
+      labels:
+        app: shipping-service
+    spec:
+      containers:
+      - name: shipping-service
+        image: acrecommerce69.azurecr.io/shipping-service:0.1.0
+        ports:
+        - containerPort: 8600
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SPRING_ZIPKIN_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: ZIPKIN_BASE_URL
+        - name: SPRING_CONFIG_IMPORT
+          value: "optional:configserver:http://cloud-config.ecommerce-system:9296"
+        - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: EUREKA_SERVER_URL
+        - name: EUREKA_INSTANCE
+          value: "shipping-service"
+        resources:
+          limits:
+            memory: "1024Mi"
+            cpu: "300m"
+          requests:
+            memory: "512Mi"
+            cpu: "150m" 

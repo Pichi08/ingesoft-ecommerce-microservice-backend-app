@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ecommerce-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ecommerce-services 
