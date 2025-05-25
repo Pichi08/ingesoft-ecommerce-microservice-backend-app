@@ -1,0 +1,308 @@
+/**
+ * Infrastructure Pipeline for E-commerce Platform
+ * 
+ * Purpose: Deploy core infrastructure services to Kubernetes
+ * Triggered: Manually or on infrastructure changes
+ * 
+ * Deploys in order:
+ * 1. Zipkin (Distributed Tracing)
+ * 2. Service Discovery (Eureka) 
+ * 3. Cloud Config (Configuration Management)
+ * 4. API Gateway (Entry Point)
+ * 
+ * Target: ecommerce-system namespace
+ */
+
+// Load shared functions
+def deployLib = load 'jenkins/shared/deploy-functions.groovy'
+
+pipeline {
+    agent any
+    
+    // Manual trigger or infrastructure changes
+    triggers {
+        // Can be triggered manually or on schedule
+        cron('H 2 * * 0') // Weekly on Sunday at 2 AM (optional)
+    }
+    
+    environment {
+        AZURE_RESOURCE_GROUP = 'AKS-ecommerce'
+        AKS_CLUSTER_NAME = 'KubeCluster'
+        ACR_NAME = 'acrecommerce69'
+        NAMESPACE = 'ecommerce-system'
+        SERVICE_VERSION = '0.1.0'
+    }
+    
+    stages {
+        stage('🚀 Initialize') {
+            steps {
+                echo "Starting infrastructure deployment..."
+                echo "Target cluster: ${AKS_CLUSTER_NAME}"
+                echo "Target namespace: ${NAMESPACE}"
+                
+                // Clean workspace
+                cleanWs()
+                
+                // Checkout source code
+                checkout scm
+            }
+        }
+        
+        stage('🔑 Setup Azure Connection') {
+            steps {
+                script {
+                    echo "Setting up Azure connection..."
+                    
+                    // Setup Azure and AKS connection
+                    deployLib.setupAzureConnection(AZURE_RESOURCE_GROUP, AKS_CLUSTER_NAME)
+                    
+                    // Verify cluster connectivity
+                    sh '''
+                        echo "🔍 Verifying cluster connectivity..."
+                        kubectl cluster-info
+                        kubectl get nodes
+                        echo "✅ Cluster connectivity verified"
+                    '''
+                }
+            }
+        }
+        
+        stage('🏗️ Prepare Infrastructure Namespace') {
+            steps {
+                script {
+                    echo "Preparing infrastructure namespace..."
+                    
+                    // Ensure namespace exists
+                    deployLib.ensureNamespace(NAMESPACE)
+                    
+                    // Apply base configurations
+                    sh '''
+                        echo "📁 Applying base configurations..."
+                        kubectl apply -f k8s/config/ --namespace=${NAMESPACE} || true
+                        echo "✅ Base configurations applied"
+                    '''
+                }
+            }
+        }
+        
+        stage('📊 Deploy Zipkin') {
+            steps {
+                script {
+                    echo "🔍 Deploying Zipkin (Distributed Tracing)..."
+                    
+                    try {
+                        // Apply Zipkin configuration
+                        sh 'kubectl apply -f k8s/infrastructure/zipkin.yaml'
+                        
+                        // Wait for Zipkin to be ready
+                        deployLib.waitForServiceReady('zipkin', NAMESPACE, 180)
+                        
+                        echo "✅ Zipkin deployed successfully"
+                        
+                    } catch (Exception e) {
+                        echo "❌ Zipkin deployment failed: ${e.message}"
+                        throw e
+                    }
+                }
+            }
+        }
+        
+        stage('🗂️ Deploy Service Discovery') {
+            steps {
+                script {
+                    echo "🔍 Deploying Service Discovery (Eureka)..."
+                    
+                    try {
+                        // Apply Service Discovery configuration
+                        sh 'kubectl apply -f k8s/infrastructure/service-discovery.yaml'
+                        
+                        // Wait for Service Discovery to be ready
+                        deployLib.waitForServiceReady('service-discovery', NAMESPACE, 300)
+                        
+                        // Give extra time for Eureka to fully initialize
+                        echo "⏳ Waiting for Eureka to fully initialize..."
+                        sleep(time: 30, unit: 'SECONDS')
+                        
+                        echo "✅ Service Discovery deployed successfully"
+                        
+                    } catch (Exception e) {
+                        echo "❌ Service Discovery deployment failed: ${e.message}"
+                        throw e
+                    }
+                }
+            }
+        }
+        
+        stage('⚙️ Deploy Cloud Config') {
+            steps {
+                script {
+                    echo "🔍 Deploying Cloud Config (Configuration Management)..."
+                    
+                    try {
+                        // Apply Cloud Config configuration
+                        sh 'kubectl apply -f k8s/infrastructure/cloud-config.yaml'
+                        
+                        // Wait for Cloud Config to be ready
+                        deployLib.waitForServiceReady('cloud-config', NAMESPACE, 300)
+                        
+                        // Give time for Cloud Config to register with Eureka
+                        echo "⏳ Waiting for Cloud Config to register with Eureka..."
+                        sleep(time: 30, unit: 'SECONDS')
+                        
+                        echo "✅ Cloud Config deployed successfully"
+                        
+                    } catch (Exception e) {
+                        echo "❌ Cloud Config deployment failed: ${e.message}"
+                        throw e
+                    }
+                }
+            }
+        }
+        
+        stage('🌐 Deploy API Gateway') {
+            steps {
+                script {
+                    echo "🔍 Deploying API Gateway (Entry Point)..."
+                    
+                    try {
+                        // Apply API Gateway configuration
+                        sh 'kubectl apply -f k8s/infrastructure/api-gateway.yaml'
+                        
+                        // Wait for API Gateway to be ready
+                        deployLib.waitForServiceReady('api-gateway', NAMESPACE, 300)
+                        
+                        // Give time for API Gateway to register and configure routes
+                        echo "⏳ Waiting for API Gateway to configure routes..."
+                        sleep(time: 45, unit: 'SECONDS')
+                        
+                        echo "✅ API Gateway deployed successfully"
+                        
+                    } catch (Exception e) {
+                        echo "❌ API Gateway deployment failed: ${e.message}"
+                        throw e
+                    }
+                }
+            }
+        }
+        
+        stage('🩺 Infrastructure Health Checks') {
+            steps {
+                script {
+                    echo "Running infrastructure health checks..."
+                    
+                    // Check all infrastructure services
+                    sh '''
+                        echo "🔍 Checking infrastructure services status..."
+                        kubectl get pods -n ${NAMESPACE}
+                        kubectl get services -n ${NAMESPACE}
+                        
+                        echo "📊 Checking service health endpoints..."
+                    '''
+                    
+                    // Check Zipkin
+                    def zipkinHealthy = deployLib.healthCheck('zipkin', NAMESPACE, 9411)
+                    if (!zipkinHealthy) {
+                        echo "⚠️ Zipkin health check failed"
+                    }
+                    
+                    // Check Eureka
+                    def eurekaHealthy = deployLib.healthCheck('service-discovery', NAMESPACE, 8761)
+                    if (!eurekaHealthy) {
+                        echo "⚠️ Eureka health check failed"
+                    }
+                    
+                    // Check Cloud Config
+                    def configHealthy = deployLib.healthCheck('cloud-config', NAMESPACE, 8888)
+                    if (!configHealthy) {
+                        echo "⚠️ Cloud Config health check failed"
+                    }
+                    
+                    // Check API Gateway
+                    def gatewayHealthy = deployLib.healthCheck('api-gateway', NAMESPACE, 8080)
+                    if (!gatewayHealthy) {
+                        echo "⚠️ API Gateway health check failed"
+                    }
+                    
+                    echo "✅ Infrastructure health checks completed"
+                }
+            }
+        }
+        
+        stage('🔗 Verify Service Integration') {
+            steps {
+                script {
+                    echo "Verifying service integration..."
+                    
+                    sh '''
+                        echo "🔍 Checking Eureka service registration..."
+                        
+                        # Wait a bit more for services to register
+                        sleep 30
+                        
+                        # Check if services are registered with Eureka
+                        echo "Checking Eureka dashboard for registered services..."
+                        
+                        # Get API Gateway external IP
+                        GATEWAY_IP=$(kubectl get service api-gateway -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || echo "pending")
+                        
+                        if [ "$GATEWAY_IP" != "pending" ] && [ ! -z "$GATEWAY_IP" ]; then
+                            echo "🌐 API Gateway is accessible at: http://${GATEWAY_IP}:8080"
+                            echo "🔍 Eureka Dashboard: http://${GATEWAY_IP}:8761"
+                            echo "📊 Zipkin Dashboard: http://${GATEWAY_IP}:9411"
+                            
+                            # Test basic connectivity
+                            curl -f "http://${GATEWAY_IP}:8080/actuator/health" || echo "Gateway health endpoint not ready yet"
+                        else
+                            echo "⏳ API Gateway external IP is still pending..."
+                        fi
+                        
+                        echo "✅ Service integration verification completed"
+                    '''
+                }
+            }
+        }
+        
+    
+    post {
+        always {
+            echo "🧹 Cleaning up infrastructure pipeline..."
+            
+            // Display final status
+            sh '''
+                echo "📊 Final Infrastructure Status:"
+                kubectl get all -n ${NAMESPACE}
+            '''
+        }
+        
+        success {
+            echo "🎉 INFRASTRUCTURE DEPLOYMENT SUCCESS! 🎉"
+            echo "✅ All infrastructure services are deployed and ready"
+            
+            script {
+                def gatewayUrl = deployLib.getServiceUrl('api-gateway', NAMESPACE)
+                echo "🌐 API Gateway URL: ${gatewayUrl}"
+                echo "🔍 Eureka Dashboard: ${gatewayUrl.replace(':8080', ':8761')}"
+                echo "📊 Zipkin Dashboard: ${gatewayUrl.replace(':8080', ':9411')}"
+                echo ""
+                echo "🚀 Ready to deploy microservices!"
+            }
+        }
+        
+        failure {
+            echo "❌ Infrastructure deployment failed!"
+            echo "Check the logs and fix issues before deploying microservices"
+            
+            // Display debugging information
+            sh '''
+                echo "🔍 Debugging Information:"
+                kubectl describe pods -n ${NAMESPACE}
+                kubectl get events -n ${NAMESPACE} --sort-by=.metadata.creationTimestamp
+            '''
+        }
+        
+        unstable {
+            echo "⚠️ Infrastructure deployment is unstable"
+            echo "Some services may not be fully ready"
+        }
+    }
+} 

@@ -1,0 +1,240 @@
+/**
+ * Development Pipeline for User Service (Jenkins Plugins Approach)
+ * 
+ * Triggered on: Feature branches (feature/*, hotfix/*, bugfix/*)
+ * Purpose: Quick feedback for developers - build and test only
+ * 
+ * USES JENKINS PLUGINS - Requires plugin installation and Global Tools configuration
+ * 
+ * Required Plugins:
+ * - Pipeline
+ * - Maven Integration  
+ * - Docker Pipeline
+ * - JUnit
+ * - HTML Publisher
+ * 
+ * Required Global Tools:
+ * - Maven-3.9
+ * - Java-11
+ * - Docker
+ * 
+ * NO DEPLOYMENT - Development environment only
+ */
+
+// Load shared functions
+def buildLib = load 'jenkins/shared/build-functions.groovy'
+
+pipeline {
+    agent any
+    
+    // Use configured tools from Global Tools
+    tools {
+        maven 'Maven-3.9'
+        jdk 'Java-11'
+    }
+    
+    // Only run on feature branches
+    when {
+        anyOf {
+            branch 'feature/*'
+            branch 'hotfix/*'
+            branch 'bugfix/*'
+        }
+    }
+    
+    environment {
+        SERVICE_NAME = 'user-service'
+        MAVEN_OPTS = '-Xmx1024m'
+    }
+    
+    stages {
+        stage('🚀 Checkout') {
+            steps {
+                echo "Starting development build for ${SERVICE_NAME}..."
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Build: ${env.BUILD_NUMBER}"
+                echo "Target: Development validation"
+                
+                // Clean workspace using plugin
+                cleanWs()
+                
+                // Checkout source code
+                checkout scm
+                
+                // Verify tools are available
+                sh '''
+                    echo "🔍 Tool Verification:"
+                    java -version
+                    mvn -version
+                    docker --version
+                '''
+            }
+        }
+        
+        stage('🔨 Build Application') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "🔨 Building ${SERVICE_NAME} with Maven..."
+                    
+                    // Use Maven plugin for clean compile
+                    sh 'mvn clean compile'
+                }
+            }
+        }
+        
+        stage('🧪 Unit Tests') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "🧪 Running unit tests..."
+                    
+                    // Run tests with Maven
+                    sh 'mvn test'
+                }
+            }
+            post {
+                always {
+                    // Publish test results using JUnit plugin
+                    junit testResultsPattern: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                          allowEmptyResults: true
+                    
+                    // Publish test coverage using HTML Publisher plugin
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: "${SERVICE_NAME}/target/site/jacoco",
+                        reportFiles: 'index.html',
+                        reportName: 'Test Coverage Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('📦 Package Application') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "📦 Packaging application..."
+                    
+                    // Package with Maven (skip tests since we already ran them)
+                    sh 'mvn package -DskipTests'
+                    
+                    // Archive artifacts using Jenkins built-in function
+                    archiveArtifacts artifacts: 'target/*.jar', 
+                                   fingerprint: true,
+                                   allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🐳 Build Docker Image') {
+            steps {
+                script {
+                    echo "🐳 Building Docker image for validation..."
+                    
+                    // Generate development version tag
+                    def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
+                    echo "Image tag: ${imageTag}"
+                    
+                    // Build Docker image (but don't push - development only)
+                    sh """
+                        echo "🔨 Building Docker image for validation..."
+                        docker build -t ${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile .
+                        echo "✅ Docker image built successfully: ${SERVICE_NAME}:${imageTag}"
+                    """
+                    
+                    // Store image tag for reference
+                    env.IMAGE_TAG = imageTag
+                }
+            }
+        }
+        
+        stage('🔍 Code Quality Checks') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "🔍 Running code quality checks..."
+                    
+                    // Run additional Maven goals for code quality
+                    sh '''
+                        echo "Running code quality analysis..."
+                        
+                        # Check for common issues
+                        mvn compile -Dmaven.compiler.showWarnings=true
+                        
+                        # You can add additional tools here like:
+                        # mvn spotbugs:check
+                        # mvn checkstyle:check
+                        # mvn pmd:check
+                        
+                        echo "✅ Code quality checks completed"
+                    '''
+                }
+            }
+        }
+        
+        stage('📊 Development Summary') {
+            steps {
+                script {
+                    echo "📊 Development build summary..."
+                    
+                    // Create development build report
+                    writeFile file: 'dev-build-report.txt', text: """
+DEVELOPMENT BUILD REPORT
+=======================
+
+Service: ${SERVICE_NAME}
+Branch: ${env.BRANCH_NAME}
+Build: ${env.BUILD_NUMBER}
+Image Tag: ${env.IMAGE_TAG}
+Timestamp: ${new Date()}
+
+Build Status: SUCCESS
+Tests: Executed
+Docker Image: Built (not pushed)
+Deployment: Not performed (development only)
+
+Next Steps:
+- Review test results
+- Check code coverage
+- Merge to develop branch for staging deployment
+"""
+                    
+                    // Archive the report
+                    archiveArtifacts artifacts: 'dev-build-report.txt', fingerprint: true
+                    
+                    echo "📋 Development build completed successfully!"
+                    echo "🔍 Review test results and coverage reports"
+                    echo "🚀 Ready for merge to develop branch"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "🧹 Cleaning up development build..."
+            
+            // Clean workspace using plugin
+            cleanWs()
+        }
+        
+        success {
+            echo "🎉 DEVELOPMENT BUILD SUCCESS! 🎉"
+            echo "✅ ${SERVICE_NAME} build completed on ${env.BRANCH_NAME}"
+            echo "🐳 Docker image: ${SERVICE_NAME}:${env.IMAGE_TAG}"
+            echo "📊 Check test results and coverage reports"
+            echo "🔄 Ready for code review and merge"
+        }
+        
+        failure {
+            echo "🚨 DEVELOPMENT BUILD FAILED! 🚨"
+            echo "❌ ${SERVICE_NAME} build failed on ${env.BRANCH_NAME}"
+            echo "🔍 Check console output for errors"
+            echo "🛠️ Fix issues before requesting code review"
+        }
+        
+        unstable {
+            echo "⚠️ Development build is unstable"
+            echo "Some tests may have failed - please review"
+        }
+    }
+} 

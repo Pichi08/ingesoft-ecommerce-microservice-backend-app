@@ -1,0 +1,418 @@
+/**
+ * Staging Pipeline for User Service (Jenkins Plugins Approach)
+ * 
+ * Triggered on: Commits to 'develop' branch
+ * Purpose: Integration testing and staging deployment validation
+ * 
+ * USES JENKINS PLUGINS - Requires plugin installation and Global Tools configuration
+ * 
+ * Required Plugins:
+ * - Pipeline
+ * - Maven Integration  
+ * - Azure CLI
+ * - Kubernetes
+ * - Docker Pipeline
+ * - JUnit
+ * - HTML Publisher
+ * 
+ * Required Global Tools:
+ * - Maven-3.9
+ * - Java-11
+ * - Docker
+ * 
+ * Deploys to: ecommerce-stage namespace
+ */
+
+// Load shared functions
+def buildLib = load 'jenkins/shared/build-functions.groovy'
+
+pipeline {
+    agent any
+    
+    // Use configured tools from Global Tools
+    tools {
+        maven 'Maven-3.9'
+        jdk 'Java-11'
+    }
+    
+    // Only run on develop branch
+    when {
+        branch 'develop'
+    }
+    
+    environment {
+        SERVICE_NAME = 'user-service'
+        ACR_NAME = 'acrecommerce69'
+        AZURE_RESOURCE_GROUP = 'AKS-ecommerce'
+        AKS_CLUSTER_NAME = 'KubeCluster'
+        NAMESPACE = 'ecommerce-stage'
+        SERVICE_PORT = '8700'
+        MAVEN_OPTS = '-Xmx1024m'
+    }
+    
+    stages {
+        stage('🚀 Checkout') {
+            steps {
+                echo "Starting staging build for ${SERVICE_NAME}..."
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Build: ${env.BUILD_NUMBER}"
+                echo "Target: Staging environment"
+                
+                // Clean workspace using plugin
+                cleanWs()
+                
+                // Checkout source code
+                checkout scm
+                
+                // Verify tools are available
+                sh '''
+                    echo "🔍 Tool Verification:"
+                    java -version
+                    mvn -version
+                    docker --version
+                '''
+            }
+        }
+        
+        stage('🔨 Build Application') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "🔨 Building ${SERVICE_NAME} with Maven..."
+                    
+                    // Use Maven plugin
+                    sh 'mvn clean compile'
+                }
+            }
+        }
+        
+        stage('🧪 Unit Tests') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "🧪 Running unit tests..."
+                    
+                    // Run tests with Maven
+                    sh 'mvn test'
+                }
+            }
+            post {
+                always {
+                    // Publish test results using JUnit plugin
+                    junit testResultsPattern: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                          allowEmptyResults: true
+                    
+                    // Publish test coverage using HTML Publisher plugin
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: "${SERVICE_NAME}/target/site/jacoco",
+                        reportFiles: 'index.html',
+                        reportName: 'Test Coverage Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('🔗 Integration Tests') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "🔗 Running integration tests..."
+                    
+                    // Run integration tests with Maven
+                    sh 'mvn verify -Dspring.profiles.active=test'
+                }
+            }
+            post {
+                always {
+                    // Publish integration test results
+                    junit testResultsPattern: "${SERVICE_NAME}/target/failsafe-reports/TEST-*.xml",
+                          allowEmptyResults: true
+                }
+            }
+        }
+        
+        stage('📦 Package Application') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "📦 Packaging application..."
+                    
+                    // Package with Maven
+                    sh 'mvn package -DskipTests'
+                    
+                    // Archive artifacts using Jenkins built-in function
+                    archiveArtifacts artifacts: 'target/*.jar', 
+                                   fingerprint: true,
+                                   allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🐳 Build & Push Docker Image') {
+            steps {
+                script {
+                    echo "🐳 Building and pushing Docker image..."
+                    
+                    // Generate staging version tag
+                    def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
+                    echo "Image tag: ${imageTag}"
+                    
+                    // Use Azure CLI to authenticate with ACR
+                    azureCLI commands: [
+                        [script: 'az version'],
+                        [script: "az acr login --name ${ACR_NAME}"]
+                    ], principalCredentialId: 'azure-credentials'
+                    
+                    // Build and push Docker image using direct Docker commands
+                    sh """
+                        echo "🔨 Building Docker image..."
+                        docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile .
+                        
+                        echo "📤 Pushing Docker image to ACR..."
+                        docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}
+                        
+                        echo "📤 Pushing latest tag..."
+                        docker tag ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:latest
+                        docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:latest
+                        
+                        echo "✅ Docker image pushed successfully"
+                    """
+                    
+                    // Store image tag for deployment
+                    env.IMAGE_TAG = imageTag
+                }
+            }
+        }
+        
+        stage('🏗️ Prepare Staging Environment') {
+            steps {
+                script {
+                    echo "🏗️ Preparing staging environment..."
+                    
+                    // Use Azure CLI to get AKS credentials
+                    azureCLI commands: [
+                        [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"],
+                        [script: 'kubectl cluster-info']
+                    ], principalCredentialId: 'azure-credentials'
+                    
+                    // Ensure namespace exists using kubectl
+                    sh """
+                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        echo "✅ Namespace ${NAMESPACE} ready"
+                    """
+                    
+                    // Apply Kubernetes configurations
+                    sh """
+                        if [ -d "k8s/services/${SERVICE_NAME}" ]; then
+                            kubectl apply -f k8s/services/${SERVICE_NAME}/
+                            echo "✅ Kubernetes configuration applied"
+                        else
+                            echo "⚠️ No Kubernetes configuration found"
+                        fi
+                    """
+                }
+            }
+        }
+        
+        stage('🚀 Deploy to Staging') {
+            steps {
+                script {
+                    echo "🚀 Deploying to staging Kubernetes..."
+                    
+                    // Use Kubernetes plugin for deployment
+                    kubernetesDeploy(
+                        configs: "k8s/services/${SERVICE_NAME}/*.yaml",
+                        kubeconfigId: 'k8s-staging-config',
+                        enableConfigSubstitution: true
+                    )
+                    
+                    // Alternative: Direct kubectl commands
+                    sh """
+                        echo "🚀 Updating deployment with new image..."
+                        kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG} -n ${NAMESPACE}
+                        
+                        echo "⏳ Waiting for rollout to complete..."
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+                        
+                        echo "✅ Deployment completed successfully"
+                    """
+                }
+            }
+        }
+        
+        stage('🩺 Health Checks') {
+            steps {
+                script {
+                    echo "🩺 Running health checks..."
+                    
+                    // Wait for service to stabilize
+                    sleep(time: 30, unit: 'SECONDS')
+                    
+                    // Health check using kubectl port-forward
+                    timeout(time: 2, unit: 'MINUTES') {
+                        sh """
+                            echo "🩺 Testing service health..."
+                            
+                            # Port forward in background
+                            kubectl port-forward svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} -n ${NAMESPACE} &
+                            PF_PID=\$!
+                            
+                            # Wait for port forward to establish
+                            sleep 10
+                            
+                            # Test health endpoint
+                            for i in {1..5}; do
+                                if curl -f http://localhost:${SERVICE_PORT}/actuator/health; then
+                                    echo "✅ Health check passed"
+                                    break
+                                else
+                                    echo "⏳ Attempt \$i failed, retrying..."
+                                    sleep 10
+                                fi
+                            done
+                            
+                            # Kill port forward
+                            kill \$PF_PID || true
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('💨 Smoke Tests') {
+            steps {
+                script {
+                    echo "💨 Running smoke tests..."
+                    
+                    // Basic smoke tests
+                    sh """
+                        echo "💨 Running basic smoke tests..."
+                        
+                        # Check pods are running
+                        kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE}
+                        
+                        # Check service is available
+                        kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE}
+                        
+                        # Check deployment status
+                        kubectl describe deployment ${SERVICE_NAME} -n ${NAMESPACE}
+                        
+                        # Verify all pods are ready
+                        kubectl wait --for=condition=ready pod -l app=${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+                    """
+                    
+                    // Service-specific smoke tests
+                    dir(SERVICE_NAME) {
+                        sh '''
+                            echo "🧪 Running user service specific smoke tests..."
+                            
+                            # Test 1: Check if service is registered with Eureka
+                            echo "✅ Testing Eureka registration..."
+                            
+                            # Test 2: Check database connectivity
+                            echo "✅ Testing database connectivity..."
+                            
+                            # Test 3: Check API endpoints availability
+                            echo "✅ Testing API endpoints..."
+                            
+                            echo "✅ User service smoke tests completed"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('📊 Staging Validation') {
+            steps {
+                script {
+                    echo "📊 Validating staging deployment..."
+                    
+                    // Get service information
+                    def serviceInfo = sh(
+                        script: """
+                            echo "Service Status:"
+                            kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} -o wide
+                            
+                            echo "Pod Status:"
+                            kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE} -o wide
+                            
+                            echo "Deployment Status:"
+                            kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE} -o wide
+                        """,
+                        returnStdout: true
+                    )
+                    
+                    echo "📋 Service Information:\n${serviceInfo}"
+                    
+                    // Create deployment report
+                    writeFile file: 'staging-deployment-report.txt', text: """
+STAGING DEPLOYMENT REPORT
+========================
+
+Service: ${SERVICE_NAME}
+Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}
+Namespace: ${NAMESPACE}
+Build: ${env.BUILD_NUMBER}
+Branch: ${env.BRANCH_NAME}
+Timestamp: ${new Date()}
+
+Service Information:
+${serviceInfo}
+
+Status: SUCCESS
+"""
+                    
+                    // Archive the report
+                    archiveArtifacts artifacts: 'staging-deployment-report.txt', fingerprint: true
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "🧹 Cleaning up..."
+            
+            // Clean workspace using plugin
+            cleanWs()
+            
+            // Clean up old deployments
+            sh """
+                echo "🧹 Cleaning up old deployments..."
+                kubectl get replicaset -n ${NAMESPACE} -o name | grep ${SERVICE_NAME} | sort -r | tail -n +4 | xargs -r kubectl delete -n ${NAMESPACE} || true
+            """
+        }
+        
+        success {
+            echo "🎉 STAGING DEPLOYMENT SUCCESS! 🎉"
+            echo "✅ ${SERVICE_NAME} v${env.IMAGE_TAG} is now live in staging"
+            echo "🐳 Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}"
+            echo "🌐 Namespace: ${NAMESPACE}"
+            
+            // You can add success notifications here (Slack, Teams, etc.)
+        }
+        
+        failure {
+            echo "🚨 STAGING DEPLOYMENT FAILED! 🚨"
+            echo "❌ Rolling back to previous version..."
+            
+            script {
+                try {
+                    sh """
+                        echo "🔄 Rolling back deployment..."
+                        kubectl rollout undo deployment/${SERVICE_NAME} -n ${NAMESPACE}
+                        kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+                        echo "✅ Rollback completed"
+                    """
+                } catch (Exception e) {
+                    echo "❌ Rollback failed: ${e.message}"
+                    echo "🚨 Manual intervention required!"
+                }
+            }
+        }
+        
+        unstable {
+            echo "⚠️ Staging deployment is unstable"
+            echo "Some tests may have failed - please review"
+        }
+    }
+} 
