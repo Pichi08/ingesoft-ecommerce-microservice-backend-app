@@ -1,10 +1,8 @@
 /**
- * Production Pipeline for User Service (Working Azure CLI Plugin)
+ * Production Pipeline for User Service
  * 
  * Triggered on: Commits to 'main' branch
  * Purpose: Full testing, manual approval, and production deployment
- * 
- * USES JENKINS PLUGINS - Requires plugin installation and Global Tools configuration
  * 
  * Required Plugins:
  * - Pipeline
@@ -13,7 +11,6 @@
  * - Kubernetes
  * - Docker Pipeline
  * - JUnit
- * - HTML Publisher
  * 
  * Required Global Tools:
  * - Maven-3.9
@@ -51,15 +48,15 @@ pipeline {
     }
     
     stages {
-        stage('🚀 Checkout') {
+        stage('Checkout') {
             steps {
-                echo "Starting PRODUCTION build for ${SERVICE_NAME}..."
+                echo "Starting PRODUCTION build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "Build: ${env.BUILD_NUMBER}"
                 echo "Target: PRODUCTION environment"
-                echo "⚠️ This will deploy to PRODUCTION!"
+                echo "WARNING: This will deploy to PRODUCTION"
                 
-                // Clean workspace using plugin
+                // Clean workspace
                 cleanWs()
                 
                 // Checkout source code
@@ -67,7 +64,7 @@ pipeline {
                 
                 // Verify tools are available
                 sh '''
-                    echo "🔍 Tool Verification:"
+                    echo "Tool Verification:"
                     java -version
                     mvn -version
                     docker --version
@@ -76,10 +73,10 @@ pipeline {
             }
         }
         
-        stage('🔨 Build Application') {
+        stage('Build Application') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "🔨 Building ${SERVICE_NAME} for PRODUCTION..."
+                    echo "Building ${SERVICE_NAME} for PRODUCTION"
                     
                     // Use Maven plugin
                     sh 'mvn clean compile'
@@ -87,10 +84,10 @@ pipeline {
             }
         }
         
-        stage('🧪 Unit Tests') {
+        stage('Unit Tests') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "🧪 Running unit tests..."
+                    echo "Running unit tests"
                     
                     // Run tests with Maven
                     sh 'mvn test'
@@ -98,27 +95,17 @@ pipeline {
             }
             post {
                 always {
-                    // Publish test results using JUnit plugin
+                    // Publish test results
                     junit testResultsPattern: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
                           allowEmptyResults: true
-                    
-                    // Publish test coverage using HTML Publisher plugin
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: "${SERVICE_NAME}/target/site/jacoco",
-                        reportFiles: 'index.html',
-                        reportName: 'Test Coverage Report'
-                    ])
                 }
             }
         }
         
-        stage('🔗 Integration Tests') {
+        stage('Integration Tests') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "🔗 Running integration tests..."
+                    echo "Running integration tests"
                     
                     // Run integration tests with Maven
                     sh 'mvn verify -Dspring.profiles.active=test'
@@ -133,73 +120,68 @@ pipeline {
             }
         }
         
-        stage('🔒 Security Scans') {
+        stage('Security Scans') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "🔒 Running security scans for production..."
+                    echo "Running security scans for production"
                     
-                    // Security checks for production
+                    // Basic security checks for production
                     sh '''
-                        echo "🔒 Running security checks..."
+                        echo "Running security checks"
                         
                         # Check for security vulnerabilities in dependencies
                         mvn dependency:tree
                         
                         # Check for hardcoded secrets (basic check)
-                        echo "=== Checking for potential secrets ==="
+                        echo "Checking for potential secrets"
                         find src -name "*.java" -exec grep -Hn "password\\|secret\\|key\\|token" {} \\; || echo "No obvious secrets found"
                         
                         # Check for SQL injection patterns
-                        echo "=== Checking for SQL injection patterns ==="
+                        echo "Checking for SQL injection patterns"
                         find src -name "*.java" -exec grep -Hn "Statement\\|createStatement" {} \\; || echo "No direct SQL statements found"
                         
-                        echo "✅ Basic security checks completed"
+                        echo "Basic security checks completed"
                     '''
                 }
             }
         }
         
-        stage('📦 Package Application') {
+        stage('Package Application') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "📦 Packaging application for production..."
+                    echo "Packaging application for production"
                     
                     // Package with Maven
                     sh 'mvn package -DskipTests'
-                    
-                    // Archive artifacts using Jenkins built-in function
-                    archiveArtifacts artifacts: 'target/*.jar', 
-                                   fingerprint: true,
-                                   allowEmptyArchive: true
                 }
             }
         }
         
-        stage('🐳 Build & Push Docker Image') {
+        stage('Build and Push Docker Image') {
             steps {
                 script {
-                    echo "🐳 Building and pushing Docker image for PRODUCTION..."
+                    echo "Building and pushing Docker image for PRODUCTION"
                     
                     // Generate production version tag
                     def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
                     echo "Production image tag: ${imageTag}"
                     
-                    // Use working azureCLI configuration
+                    // Use Azure CLI to authenticate and push
                     azureCLI(
                         principalCredentialId: 'azure-credentials',
                         commands: [
-                            [script: 'echo "🔑 Azure CLI Authentication successful"'],
+                            [script: 'echo "Azure CLI Authentication successful"'],
                             [script: 'az account show'],
-                            [script: 'echo "🐳 Logging into Azure Container Registry..."'],
+                            [script: 'echo "Logging into Azure Container Registry"'],
                             [script: "az acr login --name ${ACR_NAME}"],
-                            [script: 'echo "🔨 Building Docker image for PRODUCTION..."'],
+                            [script: 'echo "Building Docker image for PRODUCTION"'],
                             [script: "docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile ."],
-                            [script: 'echo "📤 Pushing Docker image to ACR..."'],
+                            [script: 'echo "Pushing Docker image to ACR"'],
                             [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}"],
-                            [script: 'echo "📤 Tagging as production-latest..."'],
+                            [script: 'echo "Tagging as production-latest"'],
                             [script: "docker tag ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest"],
                             [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest"],
-                            [script: 'echo "✅ Production Docker image pushed successfully"']
+                            [script: 'echo "Production Docker image pushed successfully"']
                         ]
                     )
                     
@@ -209,58 +191,58 @@ pipeline {
             }
         }
         
-        stage('🏗️ Prepare Production Environment') {
+        stage('Prepare Production Environment') {
             steps {
                 script {
-                    echo "🏗️ Preparing PRODUCTION environment..."
+                    echo "Preparing PRODUCTION environment"
                     
-                    // Use working azureCLI to get AKS credentials
+                    // Use Azure CLI to get AKS credentials
                     azureCLI(
                         principalCredentialId: 'azure-credentials',
                         commands: [
-                            [script: 'echo "☸️ Getting AKS credentials for PRODUCTION..."'],
+                            [script: 'echo "Getting AKS credentials for PRODUCTION"'],
                             [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"],
-                            [script: 'echo "🔍 Verifying cluster connection..."'],
+                            [script: 'echo "Verifying cluster connection"'],
                             [script: 'kubectl cluster-info']
                         ]
                     )
                     
-                    // Ensure namespace exists using kubectl
+                    // Ensure namespace exists
                     sh """
                         kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        echo "✅ Namespace ${NAMESPACE} ready"
+                        echo "Namespace ${NAMESPACE} ready"
                     """
                     
                     // Apply Kubernetes configurations
                     sh """
                         if [ -d "k8s/services/${SERVICE_NAME}" ]; then
                             kubectl apply -f k8s/services/${SERVICE_NAME}/
-                            echo "✅ Kubernetes configuration applied"
+                            echo "Kubernetes configuration applied"
                         else
-                            echo "⚠️ No Kubernetes configuration found"
+                            echo "No Kubernetes configuration found"
                         fi
                     """
                 }
             }
         }
         
-        stage('⏸️ Manual Approval') {
+        stage('Manual Approval') {
             steps {
                 script {
-                    echo "⏸️ PRODUCTION DEPLOYMENT APPROVAL REQUIRED"
-                    echo "🔍 Review the following before approving:"
-                    echo "   ✅ All tests passed"
-                    echo "   ✅ Security scans completed"
-                    echo "   ✅ Docker image built and pushed"
-                    echo "   ✅ Production environment prepared"
+                    echo "PRODUCTION DEPLOYMENT APPROVAL REQUIRED"
+                    echo "Review the following before approving:"
+                    echo "- All tests passed"
+                    echo "- Security scans completed"
+                    echo "- Docker image built and pushed"
+                    echo "- Production environment prepared"
                     echo ""
-                    echo "📋 Deployment Details:"
-                    echo "   Service: ${SERVICE_NAME}"
-                    echo "   Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}"
-                    echo "   Namespace: ${NAMESPACE}"
-                    echo "   Build: ${env.BUILD_NUMBER}"
+                    echo "Deployment Details:"
+                    echo "Service: ${SERVICE_NAME}"
+                    echo "Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}"
+                    echo "Namespace: ${NAMESPACE}"
+                    echo "Build: ${env.BUILD_NUMBER}"
                     echo ""
-                    echo "⚠️ This will deploy to PRODUCTION environment!"
+                    echo "WARNING: This will deploy to PRODUCTION environment"
                     
                     // Manual approval step
                     timeout(time: 30, unit: 'MINUTES') {
@@ -277,46 +259,46 @@ pipeline {
                               ]
                     }
                     
-                    echo "✅ Production deployment approved by: ${env.APPROVER}"
-                    echo "📋 Deployment strategy: ${params.DEPLOYMENT_TYPE}"
+                    echo "Production deployment approved by: ${env.APPROVER}"
+                    echo "Deployment strategy: ${params.DEPLOYMENT_TYPE}"
                 }
             }
         }
         
-        stage('🚀 Deploy to Production') {
+        stage('Deploy to Production') {
             steps {
                 script {
-                    echo "🚀 Deploying to PRODUCTION Kubernetes..."
-                    echo "👤 Approved by: ${env.APPROVER}"
-                    echo "🔄 Strategy: ${params.DEPLOYMENT_TYPE}"
+                    echo "Deploying to PRODUCTION Kubernetes"
+                    echo "Approved by: ${env.APPROVER}"
+                    echo "Strategy: ${params.DEPLOYMENT_TYPE}"
                     
                     try {
-                        // Deploy to Kubernetes using kubectl directly
+                        // Deploy to Kubernetes
                         sh """
-                            echo "🚀 Updating PRODUCTION deployment with new image..."
+                            echo "Updating PRODUCTION deployment with new image"
                             kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG} -n ${NAMESPACE}
                             
-                            echo "⏳ Waiting for PRODUCTION rollout to complete..."
+                            echo "Waiting for PRODUCTION rollout to complete"
                             kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=600s
                             
-                            echo "✅ PRODUCTION deployment completed successfully"
+                            echo "PRODUCTION deployment completed successfully"
                         """
                         
                     } catch (Exception e) {
-                        echo "❌ PRODUCTION deployment failed: ${e.message}"
+                        echo "PRODUCTION deployment failed: ${e.message}"
                         throw e
                     }
                 }
             }
         }
         
-        stage('🩺 Production Health Checks') {
+        stage('Production Health Checks') {
             when {
                 not { params.SKIP_HEALTH_CHECKS }
             }
             steps {
                 script {
-                    echo "🩺 Running PRODUCTION health checks..."
+                    echo "Running PRODUCTION health checks"
                     
                     // Wait for service to stabilize
                     sleep(time: 60, unit: 'SECONDS')
@@ -324,7 +306,7 @@ pipeline {
                     // Extended health checks for production
                     timeout(time: 5, unit: 'MINUTES') {
                         sh """
-                            echo "🩺 Testing PRODUCTION service health..."
+                            echo "Testing PRODUCTION service health"
                             
                             # Port forward in background
                             kubectl port-forward svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} -n ${NAMESPACE} &
@@ -336,10 +318,10 @@ pipeline {
                             # Test health endpoint multiple times
                             for i in {1..10}; do
                                 if curl -f http://localhost:${SERVICE_PORT}/actuator/health; then
-                                    echo "✅ Health check \$i passed"
+                                    echo "Health check \$i passed"
                                     sleep 5
                                 else
-                                    echo "❌ Health check \$i failed"
+                                    echo "Health check \$i failed"
                                     kill \$PF_PID || true
                                     exit 1
                                 fi
@@ -347,30 +329,27 @@ pipeline {
                             
                             # Kill port forward
                             kill \$PF_PID || true
-                            echo "✅ All PRODUCTION health checks passed"
+                            echo "All PRODUCTION health checks passed"
                         """
                     }
                 }
             }
         }
         
-        stage('💨 Production Smoke Tests') {
+        stage('Production Smoke Tests') {
             steps {
                 script {
-                    echo "💨 Running PRODUCTION smoke tests..."
+                    echo "Running PRODUCTION smoke tests"
                     
                     // Comprehensive smoke tests for production
                     sh """
-                        echo "💨 Running PRODUCTION smoke tests..."
+                        echo "Running PRODUCTION smoke tests"
                         
                         # Check pods are running
                         kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE}
                         
                         # Check service is available
                         kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE}
-                        
-                        # Check deployment status
-                        kubectl describe deployment ${SERVICE_NAME} -n ${NAMESPACE}
                         
                         # Verify all pods are ready
                         kubectl wait --for=condition=ready pod -l app=${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
@@ -382,73 +361,20 @@ pipeline {
                     // Service-specific production tests
                     dir(SERVICE_NAME) {
                         sh '''
-                            echo "🧪 Running user service PRODUCTION smoke tests..."
+                            echo "Running user service PRODUCTION smoke tests"
                             
                             # Test 1: Check if service is registered with Eureka
-                            echo "✅ Testing Eureka registration in PRODUCTION..."
+                            echo "Testing Eureka registration in PRODUCTION"
                             
                             # Test 2: Check database connectivity
-                            echo "✅ Testing database connectivity in PRODUCTION..."
+                            echo "Testing database connectivity in PRODUCTION"
                             
                             # Test 3: Check API endpoints availability
-                            echo "✅ Testing API endpoints in PRODUCTION..."
+                            echo "Testing API endpoints in PRODUCTION"
                             
-                            echo "✅ User service PRODUCTION smoke tests completed"
+                            echo "User service PRODUCTION smoke tests completed"
                         '''
                     }
-                }
-            }
-        }
-        
-        stage('📊 Production Deployment Report') {
-            steps {
-                script {
-                    echo "📊 Generating PRODUCTION deployment report..."
-                    
-                    // Get service information
-                    def serviceInfo = sh(
-                        script: """
-                            echo "PRODUCTION Service Status:"
-                            kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} -o wide
-                            
-                            echo "PRODUCTION Pod Status:"
-                            kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE} -o wide
-                            
-                            echo "PRODUCTION Deployment Status:"
-                            kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE} -o wide
-                            
-                            echo "PRODUCTION Ingress Status:"
-                            kubectl get ingress -n ${NAMESPACE} || echo "No ingress found"
-                        """,
-                        returnStdout: true
-                    )
-                    
-                    echo "📋 PRODUCTION Service Information:\n${serviceInfo}"
-                    
-                    // Create production deployment report
-                    writeFile file: 'production-deployment-report.txt', text: """
-PRODUCTION DEPLOYMENT REPORT
-============================
-
-Service: ${SERVICE_NAME}
-Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}
-Namespace: ${NAMESPACE}
-Build: ${env.BUILD_NUMBER}
-Branch: ${env.BRANCH_NAME}
-Approved by: ${env.APPROVER}
-Deployment Strategy: ${params.DEPLOYMENT_TYPE}
-Timestamp: ${new Date()}
-
-Service Information:
-${serviceInfo}
-
-Status: SUCCESS
-Environment: PRODUCTION
-Health Checks: ${params.SKIP_HEALTH_CHECKS ? 'SKIPPED' : 'PASSED'}
-"""
-                    
-                    // Archive the report
-                    archiveArtifacts artifacts: 'production-deployment-report.txt', fingerprint: true
                 }
             }
         }
@@ -456,59 +382,52 @@ Health Checks: ${params.SKIP_HEALTH_CHECKS ? 'SKIPPED' : 'PASSED'}
     
     post {
         always {
-            echo "🧹 Cleaning up PRODUCTION build..."
-            
-            // Clean workspace using plugin
+            echo "Cleaning up PRODUCTION build"
             cleanWs()
             
             // Clean up old deployments (keep more for production)
             sh """
-                echo "🧹 Cleaning up old PRODUCTION deployments..."
+                echo "Cleaning up old PRODUCTION deployments"
                 kubectl get replicaset -n ${NAMESPACE} -o name | grep ${SERVICE_NAME} | sort -r | tail -n +6 | xargs -r kubectl delete -n ${NAMESPACE} || true
             """
         }
         
         success {
-            echo "🎉 PRODUCTION DEPLOYMENT SUCCESS! 🎉"
-            echo "✅ ${SERVICE_NAME} v${env.IMAGE_TAG} is now LIVE in PRODUCTION"
-            echo "🐳 Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}"
-            echo "🌐 Namespace: ${NAMESPACE}"
-            echo "👤 Approved by: ${env.APPROVER}"
-            echo "🔧 Used Azure CLI Plugin successfully!"
-            echo "🚀 PRODUCTION deployment completed successfully!"
-            
-            // You can add success notifications here (Slack, Teams, email, etc.)
+            echo "PRODUCTION DEPLOYMENT SUCCESS"
+            echo "${SERVICE_NAME} v${env.IMAGE_TAG} is now LIVE in PRODUCTION"
+            echo "Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}"
+            echo "Namespace: ${NAMESPACE}"
+            echo "Approved by: ${env.APPROVER}"
+            echo "PRODUCTION deployment completed successfully"
         }
         
         failure {
-            echo "🚨 PRODUCTION DEPLOYMENT FAILED! 🚨"
-            echo "❌ Rolling back to previous PRODUCTION version..."
+            echo "PRODUCTION DEPLOYMENT FAILED"
+            echo "Rolling back to previous PRODUCTION version"
             
             script {
                 try {
                     sh """
-                        echo "🔄 Rolling back PRODUCTION deployment..."
+                        echo "Rolling back PRODUCTION deployment"
                         kubectl rollout undo deployment/${SERVICE_NAME} -n ${NAMESPACE}
                         kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=600s
-                        echo "✅ PRODUCTION rollback completed"
+                        echo "PRODUCTION rollback completed"
                     """
                 } catch (Exception e) {
-                    echo "❌ PRODUCTION rollback failed: ${e.message}"
-                    echo "🚨 URGENT: Manual intervention required for PRODUCTION!"
+                    echo "PRODUCTION rollback failed: ${e.message}"
+                    echo "URGENT: Manual intervention required for PRODUCTION"
                 }
             }
-            
-            // You can add failure notifications here (urgent alerts)
         }
         
         unstable {
-            echo "⚠️ PRODUCTION deployment is unstable"
+            echo "PRODUCTION deployment is unstable"
             echo "Some tests may have failed - please review immediately"
             echo "Consider rolling back if issues persist"
         }
         
         aborted {
-            echo "⏸️ PRODUCTION deployment was aborted"
+            echo "PRODUCTION deployment was aborted"
             echo "No changes were made to PRODUCTION environment"
         }
     }
