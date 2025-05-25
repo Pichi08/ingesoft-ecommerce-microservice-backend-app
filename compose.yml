@@ -70,7 +70,7 @@ services:
       - EUREKA_INSTANCE=payment-service-container
 
   product-service-container:
-    image: selimhorri/product-service-ecommerce-boot:0.1.0
+    image: product-service-ecommerce-boot:0.1.0
     ports:
       - 8500:8500
     environment:
@@ -92,7 +92,7 @@ services:
       - EUREKA_INSTANCE=shipping-service-container
 
   user-service-container:
-    image: selimhorri/user-service-ecommerce-boot:0.1.0
+    image: user-service-ecommerce-boot:0.1.0
     ports:
       - 8700:8700
     environment:
@@ -103,7 +103,7 @@ services:
       - EUREKA_INSTANCE=user-service-container
 
   favourite-service-container:
-    image: selimhorri/favourite-service-ecommerce-boot:0.1.0
+    image: favourite-service-ecommerce-boot:0.1.0
     ports:
       - 8800:8800
     environment:
