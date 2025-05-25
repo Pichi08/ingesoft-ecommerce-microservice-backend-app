@@ -10,7 +10,7 @@
  */
 def buildMavenProject(String serviceName, boolean skipTests = false) {
     dir(serviceName) {
-        echo "🔨 Building ${serviceName} with Maven..."
+        echo "Building ${serviceName} with Maven"
         
         if (skipTests) {
             sh './mvnw clean package -DskipTests'
@@ -18,7 +18,7 @@ def buildMavenProject(String serviceName, boolean skipTests = false) {
             sh './mvnw clean test package'
         }
         
-        echo "✅ ${serviceName} build completed successfully"
+        echo "${serviceName} build completed successfully"
     }
 }
 
@@ -28,14 +28,11 @@ def buildMavenProject(String serviceName, boolean skipTests = false) {
  */
 def runUnitTests(String serviceName) {
     dir(serviceName) {
-        echo "🧪 Running unit tests for ${serviceName}..."
+        echo "Running unit tests for ${serviceName}"
         
         sh './mvnw test'
         
-        // Publish test results
-        publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
-        
-        echo "✅ Unit tests completed for ${serviceName}"
+        echo "Unit tests completed for ${serviceName}"
     }
 }
 
@@ -45,11 +42,11 @@ def runUnitTests(String serviceName) {
  */
 def runIntegrationTests(String serviceName) {
     dir(serviceName) {
-        echo "🔗 Running integration tests for ${serviceName}..."
+        echo "Running integration tests for ${serviceName}"
         
         sh './mvnw verify -Dspring.profiles.active=test'
         
-        echo "✅ Integration tests completed for ${serviceName}"
+        echo "Integration tests completed for ${serviceName}"
     }
 }
 
@@ -60,14 +57,14 @@ def runIntegrationTests(String serviceName) {
  * @param acrName Azure Container Registry name
  */
 def buildDockerImage(String serviceName, String imageTag, String acrName) {
-    echo "🐳 Building Docker image for ${serviceName}..."
+    echo "Building Docker image for ${serviceName}"
     
     sh """
         docker build -t ${acrName}.azurecr.io/${serviceName}:${imageTag} \\
             -f ${serviceName}/Dockerfile .
     """
     
-    echo "✅ Docker image built: ${acrName}.azurecr.io/${serviceName}:${imageTag}"
+    echo "Docker image built: ${acrName}.azurecr.io/${serviceName}:${imageTag}"
 }
 
 /**
@@ -77,11 +74,11 @@ def buildDockerImage(String serviceName, String imageTag, String acrName) {
  * @param acrName Azure Container Registry name
  */
 def pushDockerImage(String serviceName, String imageTag, String acrName) {
-    echo "📤 Pushing Docker image for ${serviceName}..."
+    echo "Pushing Docker image for ${serviceName}"
     
     sh "docker push ${acrName}.azurecr.io/${serviceName}:${imageTag}"
     
-    echo "✅ Docker image pushed: ${acrName}.azurecr.io/${serviceName}:${imageTag}"
+    echo "Docker image pushed: ${acrName}.azurecr.io/${serviceName}:${imageTag}"
 }
 
 /**
@@ -115,31 +112,6 @@ def imageExists(String serviceName, String imageTag, String acrName) {
         returnStatus: true
     )
     return exitCode == 0
-}
-
-/**
- * Archive build artifacts
- * @param serviceName Name of the microservice
- */
-def archiveArtifacts(String serviceName) {
-    dir(serviceName) {
-        echo "📁 Archiving artifacts for ${serviceName}..."
-        
-        archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
-        
-        if (fileExists('target/site/jacoco')) {
-            publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'target/site/jacoco',
-                reportFiles: 'index.html',
-                reportName: 'JaCoCo Coverage Report'
-            ])
-        }
-        
-        echo "✅ Artifacts archived for ${serviceName}"
-    }
 }
 
 return this 

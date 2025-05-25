@@ -44,9 +44,9 @@ pipeline {
     }
     
     stages {
-        stage('🚀 Checkout') {
+        stage('Checkout') {
             steps {
-                echo "Starting build for ${SERVICE_NAME}..."
+                echo "Starting build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "Build: ${env.BUILD_NUMBER}"
                 
@@ -55,32 +55,32 @@ pipeline {
             }
         }
         
-        stage('🔨 Build Application') {
+        stage('Build Application') {
             steps {
                 script {
-                    echo "Building ${SERVICE_NAME}..."
+                    echo "Building ${SERVICE_NAME}"
                     buildLib.buildMavenProject(SERVICE_NAME, false)
                 }
             }
         }
         
-        stage('🧪 Unit Tests') {
+        stage('Unit Tests') {
             steps {
                 script {
-                    echo "Running unit tests for ${SERVICE_NAME}..."
+                    echo "Running unit tests for ${SERVICE_NAME}"
                     buildLib.runUnitTests(SERVICE_NAME)
                 }
             }
             post {
                 always {
-                    junit testResultsPattern: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
                           allowEmptyResults: true
                 }
             }
         }
         
         // TODO: Add integration tests for staging/production pipelines
-        stage('🔗 Integration Tests') {
+        stage('Integration Tests') {
             when {
                 anyOf {
                     branch 'develop'
@@ -90,13 +90,13 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Running integration tests for ${SERVICE_NAME}..."
+                    echo "Running integration tests for ${SERVICE_NAME}"
                     buildLib.runIntegrationTests(SERVICE_NAME)
                 }
             }
         }
         
-        stage('🐳 Build Docker Image') {
+        stage('Build Docker Image') {
             steps {
                 script {
                     def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
@@ -109,7 +109,7 @@ pipeline {
         }
         
         // TODO: Add push step for staging/production pipelines
-        stage('📤 Push Docker Image') {
+        stage('Push Docker Image') {
             when {
                 anyOf {
                     branch 'develop'
@@ -127,7 +127,7 @@ pipeline {
         }
         
         // TODO: Add manual approval for production pipelines
-        stage('⏸️ Deployment Approval') {
+        stage('Deployment Approval') {
             when {
                 anyOf {
                     branch 'main'
@@ -156,7 +156,7 @@ pipeline {
         }
         
         // TODO: Add deployment steps for staging/production pipelines
-        stage('🚀 Deploy to Kubernetes') {
+        stage('Deploy to Kubernetes') {
             when {
                 anyOf {
                     branch 'develop'
@@ -166,7 +166,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Deploying ${SERVICE_NAME} to Kubernetes..."
+                    echo "Deploying ${SERVICE_NAME} to Kubernetes"
                     
                     deployLib.ensureNamespace(NAMESPACE)
                     deployLib.applyKubernetesConfig(SERVICE_NAME, env.BRANCH_NAME == 'main' ? 'prod' : 'stage')
@@ -176,7 +176,7 @@ pipeline {
             }
         }
         
-        stage('🩺 Health Checks') {
+        stage('Health Checks') {
             when {
                 anyOf {
                     branch 'develop'
@@ -186,7 +186,7 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Running health checks..."
+                    echo "Running health checks"
                     sleep(time: 30, unit: 'SECONDS')
                     
                     def isHealthy = deployLib.healthCheck(SERVICE_NAME, NAMESPACE, SERVICE_PORT as Integer)
@@ -197,7 +197,7 @@ pipeline {
             }
         }
         
-        stage('💨 Smoke Tests') {
+        stage('Smoke Tests') {
             when {
                 anyOf {
                     branch 'develop'
@@ -207,41 +207,22 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Running smoke tests..."
+                    echo "Running smoke tests"
                     deployLib.runSmokeTests(SERVICE_NAME, NAMESPACE, 'deployment')
                     
                     // TODO: Add service-specific smoke tests here
                     dir(SERVICE_NAME) {
                         sh '''
-                            echo "🧪 Running service-specific smoke tests..."
+                            echo "Running service-specific smoke tests"
                             
                             # TODO: Add your service-specific tests here
                             # Example:
-                            # echo "Testing {SERVICE_NAME} endpoints..."
-                            # echo "Testing {SERVICE_NAME} database connectivity..."
+                            # echo "Testing {SERVICE_NAME} endpoints"
+                            # echo "Testing {SERVICE_NAME} database connectivity"
                             
-                            echo "✅ Service-specific smoke tests completed"
+                            echo "Service-specific smoke tests completed"
                         '''
                     }
-                }
-            }
-        }
-        
-        stage('📁 Archive Artifacts') {
-            steps {
-                script {
-                    echo "Archiving artifacts..."
-                    buildLib.archiveArtifacts(SERVICE_NAME)
-                    
-                    // Create deployment info file
-                    writeFile file: 'deployment-info.txt', text: """
-Service: ${SERVICE_NAME}
-Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG ?: 'not-built'}
-Branch: ${env.BRANCH_NAME}
-Build: ${env.BUILD_NUMBER}
-Timestamp: ${new Date()}
-"""
-                    archiveArtifacts artifacts: 'deployment-info.txt', fingerprint: true
                 }
             }
         }
@@ -249,7 +230,7 @@ Timestamp: ${new Date()}
     
     post {
         always {
-            echo "🧹 Cleaning up..."
+            echo "Cleaning up"
             
             // Clean up Docker images to save space
             sh """
@@ -259,7 +240,7 @@ Timestamp: ${new Date()}
         }
         
         success {
-            echo "✅ Pipeline completed successfully!"
+            echo "Pipeline completed successfully"
             echo "Service: ${SERVICE_NAME}"
             echo "Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG ?: 'not-built'}"
             
@@ -267,16 +248,16 @@ Timestamp: ${new Date()}
         }
         
         failure {
-            echo "❌ Pipeline failed!"
+            echo "Pipeline failed"
             
             // TODO: Add rollback logic for production deployments
             script {
                 if (env.BRANCH_NAME in ['main', 'master'] && env.IMAGE_TAG) {
                     try {
-                        echo "Rolling back production deployment..."
+                        echo "Rolling back production deployment"
                         deployLib.rollbackDeployment(SERVICE_NAME, NAMESPACE)
                     } catch (Exception e) {
-                        echo "❌ Rollback failed: ${e.message}"
+                        echo "Rollback failed: ${e.message}"
                     }
                 }
             }
@@ -285,7 +266,7 @@ Timestamp: ${new Date()}
         }
         
         unstable {
-            echo "⚠️ Pipeline is unstable"
+            echo "Pipeline is unstable"
             // TODO: Add unstable notifications here
         }
     }

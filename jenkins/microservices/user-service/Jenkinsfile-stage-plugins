@@ -95,7 +95,7 @@ pipeline {
             post {
                 always {
                     // Publish test results
-                    junit testResultsPattern: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
                           allowEmptyResults: true
                 }
             }
@@ -113,7 +113,7 @@ pipeline {
             post {
                 always {
                     // Publish integration test results
-                    junit testResultsPattern: "${SERVICE_NAME}/target/failsafe-reports/TEST-*.xml",
+                    junit testResults: "${SERVICE_NAME}/target/failsafe-reports/TEST-*.xml",
                           allowEmptyResults: true
                 }
             }

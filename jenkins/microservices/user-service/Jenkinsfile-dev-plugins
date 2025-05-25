@@ -7,16 +7,6 @@ pipeline {
         jdk 'Java-11'
     }
     
-    // Run on all branches except main and develop
-    when {
-        not {
-            anyOf {
-                branch 'main'
-                branch 'develop'
-            }
-        }
-    }
-    
     environment {
         SERVICE_NAME = 'user-service'
         MAVEN_OPTS = '-Xmx1024m'
@@ -24,6 +14,15 @@ pipeline {
     
     stages {
         stage('Checkout') {
+            // Run on all branches except main and develop
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
             steps {
                 echo "Starting development build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
@@ -46,6 +45,14 @@ pipeline {
         }
         
         stage('Build Application') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} with Maven"
@@ -57,6 +64,14 @@ pipeline {
         }
         
         stage('Unit Tests') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running unit tests"
@@ -68,13 +83,21 @@ pipeline {
             post {
                 always {
                     // Publish test results
-                    junit testResultsPattern: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
                           allowEmptyResults: true
                 }
             }
         }
         
         stage('Package Application') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Packaging application"

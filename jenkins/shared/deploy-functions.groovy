@@ -9,7 +9,7 @@
  * @param clusterName AKS cluster name
  */
 def setupAzureConnection(String resourceGroup, String clusterName) {
-    echo "🔑 Setting up Azure connection..."
+    echo "Setting up Azure connection"
     
     withCredentials([azureServicePrincipal('azure-credentials')]) {
         sh """
@@ -18,7 +18,7 @@ def setupAzureConnection(String resourceGroup, String clusterName) {
         """
     }
     
-    echo "✅ Azure connection established"
+    echo "Azure connection established"
 }
 
 /**
@@ -26,11 +26,11 @@ def setupAzureConnection(String resourceGroup, String clusterName) {
  * @param acrName Azure Container Registry name
  */
 def loginToACR(String acrName) {
-    echo "🐳 Logging into Azure Container Registry..."
+    echo "Logging into Azure Container Registry"
     
     sh "az acr login --name ${acrName}"
     
-    echo "✅ ACR login successful"
+    echo "ACR login successful"
 }
 
 /**
@@ -41,7 +41,7 @@ def loginToACR(String acrName) {
  * @param environment Environment (dev/stage/prod)
  */
 def deployToKubernetes(String serviceName, String namespace, String imageTag, String environment) {
-    echo "🚀 Deploying ${serviceName} to ${environment} environment..."
+    echo "Deploying ${serviceName} to ${environment} environment"
     
     // Update image tag in deployment
     sh """
@@ -49,7 +49,7 @@ def deployToKubernetes(String serviceName, String namespace, String imageTag, St
         kubectl rollout status deployment/${serviceName} -n ${namespace} --timeout=300s
     """
     
-    echo "✅ ${serviceName} deployed successfully to ${environment}"
+    echo "${serviceName} deployed successfully to ${environment}"
 }
 
 /**
@@ -57,13 +57,13 @@ def deployToKubernetes(String serviceName, String namespace, String imageTag, St
  * @param namespace Namespace name
  */
 def ensureNamespace(String namespace) {
-    echo "📁 Ensuring namespace ${namespace} exists..."
+    echo "Ensuring namespace ${namespace} exists"
     
     sh """
         kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f -
     """
     
-    echo "✅ Namespace ${namespace} ready"
+    echo "Namespace ${namespace} ready"
 }
 
 /**
@@ -72,15 +72,15 @@ def ensureNamespace(String namespace) {
  * @param environment Environment (dev/stage/prod)
  */
 def applyKubernetesConfig(String serviceName, String environment) {
-    echo "⚙️ Applying Kubernetes configuration for ${serviceName}..."
+    echo "Applying Kubernetes configuration for ${serviceName}"
     
     def configPath = "k8s/services/${serviceName}/"
     
     if (fileExists(configPath)) {
         sh "kubectl apply -f ${configPath}"
-        echo "✅ Kubernetes configuration applied for ${serviceName}"
+        echo "Kubernetes configuration applied for ${serviceName}"
     } else {
-        echo "⚠️ No Kubernetes configuration found at ${configPath}"
+        echo "No Kubernetes configuration found at ${configPath}"
     }
 }
 
@@ -91,13 +91,13 @@ def applyKubernetesConfig(String serviceName, String environment) {
  * @param timeoutSeconds Timeout in seconds (default: 300)
  */
 def waitForServiceReady(String serviceName, String namespace, int timeoutSeconds = 300) {
-    echo "⏳ Waiting for ${serviceName} to be ready..."
+    echo "Waiting for ${serviceName} to be ready"
     
     sh """
         kubectl wait --for=condition=ready pod -l app=${serviceName} -n ${namespace} --timeout=${timeoutSeconds}s
     """
     
-    echo "✅ ${serviceName} is ready"
+    echo "${serviceName} is ready"
 }
 
 /**
@@ -108,7 +108,7 @@ def waitForServiceReady(String serviceName, String namespace, int timeoutSeconds
  * @return true if healthy, false otherwise
  */
 def healthCheck(String serviceName, String namespace, int port = 8080) {
-    echo "🩺 Running health check for ${serviceName}..."
+    echo "Running health check for ${serviceName}"
     
     try {
         // Port forward to access the service
@@ -118,10 +118,10 @@ def healthCheck(String serviceName, String namespace, int port = 8080) {
             curl -f http://localhost:${port}/actuator/health || exit 1
         """
         
-        echo "✅ Health check passed for ${serviceName}"
+        echo "Health check passed for ${serviceName}"
         return true
     } catch (Exception e) {
-        echo "❌ Health check failed for ${serviceName}: ${e.message}"
+        echo "Health check failed for ${serviceName}: ${e.message}"
         return false
     }
 }
@@ -133,7 +133,7 @@ def healthCheck(String serviceName, String namespace, int port = 8080) {
  * @param environment Environment name
  */
 def runSmokeTests(String serviceName, String namespace, String environment) {
-    echo "💨 Running smoke tests for ${serviceName} in ${environment}..."
+    echo "Running smoke tests for ${serviceName} in ${environment}"
     
     try {
         // Basic connectivity test
@@ -145,13 +145,13 @@ def runSmokeTests(String serviceName, String namespace, String environment) {
         // Service-specific smoke tests
         if (serviceName == 'user-service') {
             // Test user service endpoints
-            echo "Testing user service endpoints..."
+            echo "Testing user service endpoints"
             // Add specific user service tests here
         }
         
-        echo "✅ Smoke tests passed for ${serviceName}"
+        echo "Smoke tests passed for ${serviceName}"
     } catch (Exception e) {
-        echo "❌ Smoke tests failed for ${serviceName}: ${e.message}"
+        echo "Smoke tests failed for ${serviceName}: ${e.message}"
         throw e
     }
 }
@@ -162,14 +162,14 @@ def runSmokeTests(String serviceName, String namespace, String environment) {
  * @param namespace Kubernetes namespace
  */
 def rollbackDeployment(String serviceName, String namespace) {
-    echo "🔄 Rolling back ${serviceName} deployment..."
+    echo "Rolling back ${serviceName} deployment"
     
     sh """
         kubectl rollout undo deployment/${serviceName} -n ${namespace}
         kubectl rollout status deployment/${serviceName} -n ${namespace} --timeout=300s
     """
     
-    echo "✅ Rollback completed for ${serviceName}"
+    echo "Rollback completed for ${serviceName}"
 }
 
 /**
@@ -198,13 +198,13 @@ def getServiceUrl(String serviceName, String namespace) {
  * @param keepReleases Number of releases to keep (default: 3)
  */
 def cleanupOldDeployments(String serviceName, String namespace, int keepReleases = 3) {
-    echo "🧹 Cleaning up old deployments for ${serviceName}..."
+    echo "Cleaning up old deployments for ${serviceName}"
     
     sh """
         kubectl get replicaset -n ${namespace} -o name | grep ${serviceName} | sort -r | tail -n +${keepReleases + 1} | xargs -r kubectl delete -n ${namespace}
     """
     
-    echo "✅ Cleanup completed for ${serviceName}"
+    echo "Cleanup completed for ${serviceName}"
 }
 
 return this 
