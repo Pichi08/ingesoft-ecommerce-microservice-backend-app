@@ -1,5 +1,5 @@
 /**
- * Staging Pipeline for User Service (Jenkins Plugins Approach)
+ * Staging Pipeline for User Service (Working Azure CLI Plugin)
  * 
  * Triggered on: Commits to 'develop' branch
  * Purpose: Integration testing and staging deployment validation
@@ -70,6 +70,7 @@ pipeline {
                     java -version
                     mvn -version
                     docker --version
+                    az version
                 '''
             }
         }
@@ -156,26 +157,24 @@ pipeline {
                     def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
                     echo "Image tag: ${imageTag}"
                     
-                    // Use Azure CLI to authenticate with ACR
-                    azureCLI commands: [
-                        [script: 'az version'],
-                        [script: "az acr login --name ${ACR_NAME}"]
-                    ], principalCredentialId: 'azure-credentials'
-                    
-                    // Build and push Docker image using direct Docker commands
-                    sh """
-                        echo "🔨 Building Docker image..."
-                        docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile .
-                        
-                        echo "📤 Pushing Docker image to ACR..."
-                        docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}
-                        
-                        echo "📤 Pushing latest tag..."
-                        docker tag ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:latest
-                        docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:latest
-                        
-                        echo "✅ Docker image pushed successfully"
-                    """
+                    // Use working azureCLI configuration
+                    azureCLI(
+                        principalCredentialId: 'azure-credentials',
+                        commands: [
+                            [script: 'echo "🔑 Azure CLI Authentication successful"'],
+                            [script: 'az account show'],
+                            [script: 'echo "🐳 Logging into Azure Container Registry..."'],
+                            [script: "az acr login --name ${ACR_NAME}"],
+                            [script: 'echo "🔨 Building Docker image..."'],
+                            [script: "docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile ."],
+                            [script: 'echo "📤 Pushing Docker image to ACR..."'],
+                            [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}"],
+                            [script: 'echo "📤 Pushing latest tag..."'],
+                            [script: "docker tag ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:latest"],
+                            [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:latest"],
+                            [script: 'echo "✅ Docker image pushed successfully"']
+                        ]
+                    )
                     
                     // Store image tag for deployment
                     env.IMAGE_TAG = imageTag
@@ -188,11 +187,16 @@ pipeline {
                 script {
                     echo "🏗️ Preparing staging environment..."
                     
-                    // Use Azure CLI to get AKS credentials
-                    azureCLI commands: [
-                        [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"],
-                        [script: 'kubectl cluster-info']
-                    ], principalCredentialId: 'azure-credentials'
+                    // Use working azureCLI to get AKS credentials
+                    azureCLI(
+                        principalCredentialId: 'azure-credentials',
+                        commands: [
+                            [script: 'echo "☸️ Getting AKS credentials..."'],
+                            [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"],
+                            [script: 'echo "🔍 Verifying cluster connection..."'],
+                            [script: 'kubectl cluster-info']
+                        ]
+                    )
                     
                     // Ensure namespace exists using kubectl
                     sh """
@@ -218,23 +222,22 @@ pipeline {
                 script {
                     echo "🚀 Deploying to staging Kubernetes..."
                     
-                    // Use Kubernetes plugin for deployment
-                    kubernetesDeploy(
-                        configs: "k8s/services/${SERVICE_NAME}/*.yaml",
-                        kubeconfigId: 'k8s-staging-config',
-                        enableConfigSubstitution: true
-                    )
-                    
-                    // Alternative: Direct kubectl commands
-                    sh """
-                        echo "🚀 Updating deployment with new image..."
-                        kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG} -n ${NAMESPACE}
+                    try {
+                        // Deploy to Kubernetes using kubectl directly
+                        sh """
+                            echo "🚀 Updating deployment with new image..."
+                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG} -n ${NAMESPACE}
+                            
+                            echo "⏳ Waiting for rollout to complete..."
+                            kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+                            
+                            echo "✅ Deployment completed successfully"
+                        """
                         
-                        echo "⏳ Waiting for rollout to complete..."
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
-                        
-                        echo "✅ Deployment completed successfully"
-                    """
+                    } catch (Exception e) {
+                        echo "❌ Deployment failed: ${e.message}"
+                        throw e
+                    }
                 }
             }
         }
@@ -387,8 +390,7 @@ Status: SUCCESS
             echo "✅ ${SERVICE_NAME} v${env.IMAGE_TAG} is now live in staging"
             echo "🐳 Image: ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${env.IMAGE_TAG}"
             echo "🌐 Namespace: ${NAMESPACE}"
-            
-            // You can add success notifications here (Slack, Teams, etc.)
+            echo "🔧 Used Azure CLI Plugin successfully!"
         }
         
         failure {

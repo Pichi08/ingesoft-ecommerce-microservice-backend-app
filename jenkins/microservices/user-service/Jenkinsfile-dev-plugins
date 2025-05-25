@@ -1,28 +1,23 @@
 /**
- * Development Pipeline for User Service (Jenkins Plugins Approach)
+ * Development Pipeline for User Service (Working Azure CLI Plugin)
  * 
- * Triggered on: Feature branches (feature/*, hotfix/*, bugfix/*)
- * Purpose: Quick feedback for developers - build and test only
+ * Triggered on: Feature branches (not main/develop)
+ * Purpose: Build validation and unit testing only
  * 
  * USES JENKINS PLUGINS - Requires plugin installation and Global Tools configuration
  * 
  * Required Plugins:
  * - Pipeline
  * - Maven Integration  
- * - Docker Pipeline
  * - JUnit
  * - HTML Publisher
  * 
  * Required Global Tools:
  * - Maven-3.9
  * - Java-11
- * - Docker
  * 
- * NO DEPLOYMENT - Development environment only
+ * Note: Development pipeline does NOT deploy to any environment
  */
-
-// Load shared functions
-def buildLib = load 'jenkins/shared/build-functions.groovy'
 
 pipeline {
     agent any
@@ -33,12 +28,13 @@ pipeline {
         jdk 'Java-11'
     }
     
-    // Only run on feature branches
+    // Run on all branches except main and develop
     when {
-        anyOf {
-            branch 'feature/*'
-            branch 'hotfix/*'
-            branch 'bugfix/*'
+        not {
+            anyOf {
+                branch 'main'
+                branch 'develop'
+            }
         }
     }
     
@@ -53,7 +49,7 @@ pipeline {
                 echo "Starting development build for ${SERVICE_NAME}..."
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "Build: ${env.BUILD_NUMBER}"
-                echo "Target: Development validation"
+                echo "Target: Development validation only"
                 
                 // Clean workspace using plugin
                 cleanWs()
@@ -66,7 +62,6 @@ pipeline {
                     echo "🔍 Tool Verification:"
                     java -version
                     mvn -version
-                    docker --version
                 '''
             }
         }
@@ -110,15 +105,52 @@ pipeline {
             }
         }
         
-        stage('📦 Package Application') {
+        stage('🔍 Code Quality Checks') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "📦 Packaging application..."
+                    echo "🔍 Running code quality checks..."
                     
-                    // Package with Maven (skip tests since we already ran them)
+                    // Run Maven verify for additional checks
+                    sh 'mvn verify -DskipTests'
+                    
+                    // Check for common issues
+                    sh '''
+                        echo "🔍 Checking for common code issues..."
+                        
+                        # Check for TODO/FIXME comments
+                        echo "=== TODO/FIXME Comments ==="
+                        find src -name "*.java" -exec grep -Hn "TODO\\|FIXME" {} \\; || echo "No TODO/FIXME found"
+                        
+                        # Check for System.out.println (should use logging)
+                        echo "=== System.out.println Usage ==="
+                        find src -name "*.java" -exec grep -Hn "System\\.out\\.println" {} \\; || echo "No System.out.println found"
+                        
+                        # Check for hardcoded strings that might need configuration
+                        echo "=== Potential Hardcoded Values ==="
+                        find src -name "*.java" -exec grep -Hn "localhost\\|127\\.0\\.0\\.1" {} \\; || echo "No hardcoded localhost found"
+                    '''
+                }
+            }
+        }
+        
+        stage('📦 Package Validation') {
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "📦 Validating package creation..."
+                    
+                    // Package with Maven (but don't deploy)
                     sh 'mvn package -DskipTests'
                     
-                    // Archive artifacts using Jenkins built-in function
+                    // Verify JAR was created
+                    sh '''
+                        echo "🔍 Verifying JAR creation..."
+                        ls -la target/*.jar
+                        
+                        echo "🔍 JAR contents verification..."
+                        jar -tf target/*.jar | head -20
+                    '''
+                    
+                    // Archive artifacts for development review
                     archiveArtifacts artifacts: 'target/*.jar', 
                                    fingerprint: true,
                                    allowEmptyArchive: true
@@ -126,84 +158,80 @@ pipeline {
             }
         }
         
-        stage('🐳 Build Docker Image') {
-            steps {
-                script {
-                    echo "🐳 Building Docker image for validation..."
-                    
-                    // Generate development version tag
-                    def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
-                    echo "Image tag: ${imageTag}"
-                    
-                    // Build Docker image (but don't push - development only)
-                    sh """
-                        echo "🔨 Building Docker image for validation..."
-                        docker build -t ${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile .
-                        echo "✅ Docker image built successfully: ${SERVICE_NAME}:${imageTag}"
-                    """
-                    
-                    // Store image tag for reference
-                    env.IMAGE_TAG = imageTag
-                }
-            }
-        }
-        
-        stage('🔍 Code Quality Checks') {
+        stage('🧪 Integration Test Preparation') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "🔍 Running code quality checks..."
+                    echo "🧪 Preparing integration test environment..."
                     
-                    // Run additional Maven goals for code quality
+                    // Validate integration test configuration
                     sh '''
-                        echo "Running code quality analysis..."
+                        echo "🔍 Checking integration test configuration..."
                         
-                        # Check for common issues
-                        mvn compile -Dmaven.compiler.showWarnings=true
+                        # Check if integration tests exist
+                        if [ -d "src/test/java" ]; then
+                            find src/test/java -name "*IT.java" -o -name "*IntegrationTest.java" | head -10
+                            echo "Integration test files found"
+                        else
+                            echo "No integration test directory found"
+                        fi
                         
-                        # You can add additional tools here like:
-                        # mvn spotbugs:check
-                        # mvn checkstyle:check
-                        # mvn pmd:check
-                        
-                        echo "✅ Code quality checks completed"
+                        # Check test resources
+                        if [ -d "src/test/resources" ]; then
+                            ls -la src/test/resources/
+                        else
+                            echo "No test resources directory found"
+                        fi
                     '''
                 }
             }
         }
         
-        stage('📊 Development Summary') {
+        stage('📊 Development Report') {
             steps {
                 script {
-                    echo "📊 Development build summary..."
+                    echo "📊 Generating development build report..."
                     
-                    // Create development build report
-                    writeFile file: 'dev-build-report.txt', text: """
+                    // Get build information
+                    def buildInfo = sh(
+                        script: """
+                            echo "Build Information:"
+                            echo "Service: ${SERVICE_NAME}"
+                            echo "Branch: ${env.BRANCH_NAME}"
+                            echo "Build: ${env.BUILD_NUMBER}"
+                            echo "Timestamp: \$(date)"
+                            
+                            echo "Maven Information:"
+                            cd ${SERVICE_NAME}
+                            mvn -version
+                            
+                            echo "JAR Information:"
+                            ls -la target/*.jar 2>/dev/null || echo "No JAR files found"
+                        """,
+                        returnStdout: true
+                    )
+                    
+                    echo "📋 Build Information:\n${buildInfo}"
+                    
+                    // Create development report
+                    writeFile file: 'development-build-report.txt', text: """
 DEVELOPMENT BUILD REPORT
-=======================
+========================
 
 Service: ${SERVICE_NAME}
 Branch: ${env.BRANCH_NAME}
 Build: ${env.BUILD_NUMBER}
-Image Tag: ${env.IMAGE_TAG}
 Timestamp: ${new Date()}
+Environment: Development (Build & Test Only)
 
-Build Status: SUCCESS
-Tests: Executed
-Docker Image: Built (not pushed)
-Deployment: Not performed (development only)
+Build Information:
+${buildInfo}
 
-Next Steps:
-- Review test results
-- Check code coverage
-- Merge to develop branch for staging deployment
+Status: SUCCESS
+Next Steps: Ready for integration testing in staging environment
 """
                     
                     // Archive the report
-                    archiveArtifacts artifacts: 'dev-build-report.txt', fingerprint: true
-                    
-                    echo "📋 Development build completed successfully!"
-                    echo "🔍 Review test results and coverage reports"
-                    echo "🚀 Ready for merge to develop branch"
+                    archiveArtifacts artifacts: 'development-build-report.txt', fingerprint: true
                 }
             }
         }
@@ -219,22 +247,28 @@ Next Steps:
         
         success {
             echo "🎉 DEVELOPMENT BUILD SUCCESS! 🎉"
-            echo "✅ ${SERVICE_NAME} build completed on ${env.BRANCH_NAME}"
-            echo "🐳 Docker image: ${SERVICE_NAME}:${env.IMAGE_TAG}"
-            echo "📊 Check test results and coverage reports"
-            echo "🔄 Ready for code review and merge"
+            echo "✅ ${SERVICE_NAME} build completed successfully"
+            echo "✅ Unit tests passed"
+            echo "✅ Code quality checks completed"
+            echo "✅ Package validation successful"
+            echo "🚀 Ready for merge to develop branch!"
         }
         
         failure {
             echo "🚨 DEVELOPMENT BUILD FAILED! 🚨"
-            echo "❌ ${SERVICE_NAME} build failed on ${env.BRANCH_NAME}"
-            echo "🔍 Check console output for errors"
-            echo "🛠️ Fix issues before requesting code review"
+            echo "❌ Build failed for ${SERVICE_NAME}"
+            echo "🔍 Common issues to check:"
+            echo "   - Compilation errors"
+            echo "   - Unit test failures"
+            echo "   - Maven configuration issues"
+            echo "   - Missing dependencies"
+            echo "📝 Please fix issues before merging to develop"
         }
         
         unstable {
             echo "⚠️ Development build is unstable"
             echo "Some tests may have failed - please review"
+            echo "Consider fixing issues before proceeding"
         }
     }
 } 
