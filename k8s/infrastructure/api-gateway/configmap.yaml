@@ -17,6 +17,12 @@ data:
                 - Path=/zipkin/**
               filters:
                 - StripPrefix=0
+            - id: eureka-route
+              uri: http://service-discovery:8761
+              predicates:
+                - Path=/eureka/**
+              filters:
+                - StripPrefix=0
             - id: user-service-route
               uri: lb://USER-SERVICE
               predicates:
