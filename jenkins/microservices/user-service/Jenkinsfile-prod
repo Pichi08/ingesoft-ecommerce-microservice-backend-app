@@ -297,13 +297,15 @@ pipeline {
         
         stage('Production Health Checks') {
             when {
-                allOf {
-                    branch 'main'
-                    not { params.SKIP_HEALTH_CHECKS }
-                }
+                branch 'main'
             }
             steps {
                 script {
+                    if (params.SKIP_HEALTH_CHECKS) {
+                        echo "Health checks skipped by user request"
+                        return
+                    }
+                    
                     echo "Running PRODUCTION health checks"
                     
                     // Wait for service to stabilize
