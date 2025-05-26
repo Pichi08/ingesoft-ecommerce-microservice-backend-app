@@ -107,62 +107,31 @@ pipeline {
                 script {
                     echo "Building and pushing Docker image for PRODUCTION"
                     
-                    try {
-                        // Generate production version tag (simplified)
-                        echo "Generating image tag..."
-                        def imageTag = "v1.0.${env.BUILD_NUMBER}"
-                        echo "Production image tag: ${imageTag}"
-                        
-                        echo "Current branch: ${env.BRANCH_NAME}"
-                        echo "Build number: ${env.BUILD_NUMBER}"
-                        
-                        // Use withCredentials for better error handling
-                        withCredentials([azureServicePrincipal('azure-credentials')]) {
-                            echo "Step 1: Azure CLI Authentication"
-                            sh '''
-                                az login --service-principal \
-                                    --username $AZURE_CLIENT_ID \
-                                    --password $AZURE_CLIENT_SECRET \
-                                    --tenant $AZURE_TENANT_ID
-                            '''
-                            
-                            echo "Step 2: Verify Azure account"
-                            sh 'az account show'
-                            
-                            echo "Step 3: Login to Azure Container Registry"
-                            sh "az acr login --name ${ACR_NAME}"
-                            
-                            echo "Step 4: Building Docker image"
-                            sh """
-                                docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} \
-                                    -f ${SERVICE_NAME}/Dockerfile .
-                            """
-                            
-                            echo "Step 5: Pushing Docker image to ACR"
-                            sh "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}"
-                            
-                            echo "Step 6: Tagging as production-latest"
-                            sh """
-                                docker tag ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} \
-                                    ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest
-                            """
-                            
-                            echo "Step 7: Pushing latest tag"
-                            sh "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest"
-                            
-                            echo "Production Docker image pushed successfully"
-                        }
-                        
-                        // Store image tag for deployment
-                        env.IMAGE_TAG = imageTag
-                        echo "Image tag stored: ${env.IMAGE_TAG}"
-                        
-                    } catch (Exception e) {
-                        echo "ERROR in Build and Push Docker Image stage: ${e.message}"
-                        echo "Exception class: ${e.class}"
-                        echo "Stack trace: ${e.printStackTrace()}"
-                        throw e
-                    }
+                    // Generate production version tag (simplified)
+                    def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                    echo "Production image tag: ${imageTag}"
+                    
+                    // Use the working azureCLI approach
+                    azureCLI(
+                        principalCredentialId: 'azure-credentials',
+                        commands: [
+                            [script: 'echo "Azure CLI Authentication successful"'],
+                            [script: 'az account show'],
+                            [script: 'echo "Logging into Azure Container Registry"'],
+                            [script: "az acr login --name ${ACR_NAME}"],
+                            [script: 'echo "Building Docker image for PRODUCTION"'],
+                            [script: "docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile ."],
+                            [script: 'echo "Pushing Docker image to ACR"'],
+                            [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}"],
+                            [script: 'echo "Tagging as production-latest"'],
+                            [script: "docker tag ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest"],
+                            [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest"],
+                            [script: 'echo "Production Docker image pushed successfully"']
+                        ]
+                    )
+                    
+                    // Store image tag for deployment
+                    env.IMAGE_TAG = imageTag
                 }
             }
         }
@@ -172,27 +141,16 @@ pipeline {
                 script {
                     echo "Preparing PRODUCTION environment"
                     
-                    // Use withCredentials for better error handling
-                    withCredentials([azureServicePrincipal('azure-credentials')]) {
-                        try {
-                            echo "Getting AKS credentials for PRODUCTION"
-                            sh '''
-                                az login --service-principal \
-                                    --username $AZURE_CLIENT_ID \
-                                    --password $AZURE_CLIENT_SECRET \
-                                    --tenant $AZURE_TENANT_ID
-                            '''
-                            
-                            sh "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"
-                            
-                            echo "Verifying cluster connection"
-                            sh 'kubectl cluster-info'
-                            
-                        } catch (Exception e) {
-                            echo "Azure/AKS connection failed: ${e.message}"
-                            throw e
-                        }
-                    }
+                    // Use the working azureCLI approach
+                    azureCLI(
+                        principalCredentialId: 'azure-credentials',
+                        commands: [
+                            [script: 'echo "Getting AKS credentials for PRODUCTION"'],
+                            [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"],
+                            [script: 'echo "Verifying cluster connection"'],
+                            [script: 'kubectl cluster-info']
+                        ]
+                    )
                     
                     // Ensure namespace exists
                     sh """
