@@ -35,11 +35,11 @@ pipeline {
                 // Checkout source code
                 checkout scm
                 
-                // Verify tools are available
+                // Verify tools are available (reduced output)
                 sh '''
                     echo "Tool Verification:"
-                    java -version
-                    mvn -version
+                    java -version 2>&1 | head -1
+                    mvn -version 2>&1 | head -1
                 '''
             }
         }
@@ -57,8 +57,8 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} with Maven"
                     
-                    // Clean and compile
-                    sh 'mvn clean compile'
+                    // Clean and compile (reduced output)
+                    sh 'mvn clean compile -q'
                 }
             }
         }
@@ -76,8 +76,8 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Running unit tests"
                     
-                    // Run tests with Maven
-                    sh 'mvn test'
+                    // Run tests with Maven (reduced output)
+                    sh 'mvn test -q'
                 }
             }
             post {
@@ -102,13 +102,13 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Packaging application"
                     
-                    // Package with Maven
-                    sh 'mvn package -DskipTests'
+                    // Package with Maven (reduced output)
+                    sh 'mvn package -DskipTests -q'
                     
-                    // Verify JAR was created
+                    // Verify JAR was created (reduced output)
                     sh '''
                         echo "Verifying JAR creation"
-                        ls -la target/*.jar
+                        ls -la target/*.jar | awk '{print $9, $5}' | xargs echo "JAR created:"
                     '''
                 }
             }

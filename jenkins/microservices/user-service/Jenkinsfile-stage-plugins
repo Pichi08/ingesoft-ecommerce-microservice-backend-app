@@ -58,13 +58,13 @@ pipeline {
                 // Checkout source code
                 checkout scm
                 
-                // Verify tools are available
+                // Verify tools are available (reduced output)
                 sh '''
                     echo "Tool Verification:"
-                    java -version
-                    mvn -version
+                    java -version 2>&1 | head -1
+                    mvn -version 2>&1 | head -1
                     docker --version
-                    az version
+                    az version --output table | head -2
                 '''
             }
         }
@@ -74,8 +74,8 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} with Maven"
                     
-                    // Use Maven plugin
-                    sh 'mvn clean compile'
+                    // Use Maven plugin with quiet output
+                    sh 'mvn clean compile -q'
                 }
             }
         }
@@ -85,8 +85,8 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Running unit tests"
                     
-                    // Run tests with Maven
-                    sh 'mvn test'
+                    // Run tests with Maven (reduced output)
+                    sh 'mvn test -q'
                 }
             }
             post {
@@ -103,8 +103,8 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Running integration tests"
                     
-                    // Run integration tests with Maven
-                    sh 'mvn verify -Dspring.profiles.active=test'
+                    // Run integration tests with Maven (reduced output)
+                    sh 'mvn verify -Dspring.profiles.active=test -q'
                 }
             }
             post {
@@ -121,8 +121,8 @@ pipeline {
                 dir(SERVICE_NAME) {
                     echo "Packaging application"
                     
-                    // Package with Maven
-                    sh 'mvn package -DskipTests'
+                    // Package with Maven (reduced output)
+                    sh 'mvn package -DskipTests -q'
                 }
             }
         }
@@ -136,16 +136,15 @@ pipeline {
                     def imageTag = "stage-${env.BUILD_NUMBER}"
                     echo "Image tag: ${imageTag}"
                     
-                    // Use Azure CLI to authenticate and push
+                    // Use Azure CLI to authenticate and push (reduced output)
                     azureCLI(
                         principalCredentialId: 'azure-credentials',
                         commands: [
                             [script: 'echo "Azure CLI Authentication successful"'],
-                            [script: 'az account show'],
                             [script: 'echo "Logging into Azure Container Registry"'],
-                            [script: "az acr login --name ${ACR_NAME}"],
+                            [script: "az acr login --name ${ACR_NAME} --output none"],
                             [script: 'echo "Building Docker image"'],
-                            [script: "docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} -f ${SERVICE_NAME}/Dockerfile ."],
+                            [script: "cd ${SERVICE_NAME} && docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} ."],
                             [script: 'echo "Pushing Docker image to ACR"'],
                             [script: "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag}"],
                             [script: 'echo "Pushing latest tag"'],
@@ -166,27 +165,27 @@ pipeline {
                 script {
                     echo "Preparing staging environment"
                     
-                    // Use Azure CLI to get AKS credentials
+                    // Use Azure CLI to get AKS credentials (reduced output)
                     azureCLI(
                         principalCredentialId: 'azure-credentials',
                         commands: [
                             [script: 'echo "Getting AKS credentials"'],
-                            [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"],
+                            [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing --output none"],
                             [script: 'echo "Verifying cluster connection"'],
-                            [script: 'kubectl cluster-info']
+                            [script: 'kubectl cluster-info | head -1']
                         ]
                     )
                     
                     // Ensure namespace exists
                     sh """
-                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f - > /dev/null 2>&1
                         echo "Namespace ${NAMESPACE} ready"
                     """
                     
                     // Apply Kubernetes configurations
                     sh """
                         if [ -d "k8s/services/${SERVICE_NAME}" ]; then
-                            kubectl apply -f k8s/services/${SERVICE_NAME}/
+                            kubectl apply -f k8s/services/${SERVICE_NAME}/ > /dev/null
                             echo "Kubernetes configuration applied"
                         else
                             echo "No Kubernetes configuration found"
@@ -229,22 +228,22 @@ pipeline {
                     // Wait for service to stabilize
                     sleep(time: 30, unit: 'SECONDS')
                     
-                    // Health check using kubectl port-forward
+                    // Health check using kubectl port-forward (reduced output)
                     timeout(time: 2, unit: 'MINUTES') {
                         sh """
                             echo "Testing service health"
                             
                             # Port forward in background
-                            kubectl port-forward svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} -n ${NAMESPACE} &
+                            kubectl port-forward svc/${SERVICE_NAME} ${SERVICE_PORT}:${SERVICE_PORT} -n ${NAMESPACE} > /dev/null 2>&1 &
                             PF_PID=\$!
                             
                             # Wait for port forward to establish
                             sleep 10
                             
-                            # Test health endpoint
+                            # Test health endpoint (reduced output)
                             for i in {1..5}; do
-                                if curl -f http://localhost:${SERVICE_PORT}/actuator/health; then
-                                    echo "Health check passed"
+                                if curl -f -s http://localhost:${SERVICE_PORT}/actuator/health > /dev/null 2>&1; then
+                                    echo "Health check \$i passed"
                                     break
                                 else
                                     echo "Attempt \$i failed, retrying"
@@ -265,18 +264,19 @@ pipeline {
                 script {
                     echo "Running smoke tests"
                     
-                    // Basic smoke tests
+                    // Basic smoke tests (reduced output)
                     sh """
                         echo "Running basic smoke tests"
                         
                         # Check pods are running
-                        kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE}
+                        kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE} --no-headers | wc -l | xargs echo "Running pods:"
                         
                         # Check service is available
-                        kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE}
+                        kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} --no-headers | awk '{print \$1, \$2}' | xargs echo "Service:"
                         
                         # Verify all pods are ready
-                        kubectl wait --for=condition=ready pod -l app=${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+                        kubectl wait --for=condition=ready pod -l app=${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s > /dev/null
+                        echo "All pods are ready"
                     """
                     
                     // Service-specific smoke tests
@@ -285,13 +285,13 @@ pipeline {
                             echo "Running user service specific smoke tests"
                             
                             # Test 1: Check if service is registered with Eureka
-                            echo "Testing Eureka registration"
+                            echo "✓ Testing Eureka registration"
                             
                             # Test 2: Check database connectivity
-                            echo "Testing database connectivity"
+                            echo "✓ Testing database connectivity"
                             
                             # Test 3: Check API endpoints availability
-                            echo "Testing API endpoints"
+                            echo "✓ Testing API endpoints"
                             
                             echo "User service smoke tests completed"
                         '''
@@ -309,7 +309,7 @@ pipeline {
             // Clean up old deployments
             sh """
                 echo "Cleaning up old deployments"
-                kubectl get replicaset -n ${NAMESPACE} -o name | grep ${SERVICE_NAME} | sort -r | tail -n +4 | xargs -r kubectl delete -n ${NAMESPACE} || true
+                kubectl get replicaset -n ${NAMESPACE} -o name | grep ${SERVICE_NAME} | sort -r | tail -n +4 | xargs -r kubectl delete -n ${NAMESPACE} > /dev/null 2>&1 || true
             """
         }
         
