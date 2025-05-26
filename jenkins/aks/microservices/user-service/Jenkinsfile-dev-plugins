@@ -1,0 +1,143 @@
+pipeline {
+    agent any
+    
+    // Use configured tools from Global Tools
+    tools {
+        maven 'Maven-3.9'
+        jdk 'Java-11'
+    }
+    
+    environment {
+        SERVICE_NAME = 'user-service'
+        MAVEN_OPTS = '-Xmx1024m'
+    }
+    
+    stages {
+        stage('Checkout') {
+            // Run on all branches except main and develop
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                echo "Starting development build for ${SERVICE_NAME}"
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Build: ${env.BUILD_NUMBER}"
+                echo "Target: Development validation only"
+                
+                // Clean workspace
+                cleanWs()
+                
+                // Checkout source code
+                checkout scm
+                
+                // Verify tools are available (reduced output)
+                sh '''
+                    echo "Tool Verification:"
+                    java -version 2>&1 | head -1
+                    mvn -version 2>&1 | head -1
+                '''
+            }
+        }
+        
+        stage('Build Application') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "Building ${SERVICE_NAME} with Maven"
+                    
+                    // Clean and compile (reduced output)
+                    sh 'mvn clean compile -q'
+                }
+            }
+        }
+        
+        stage('Unit Tests') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "Running unit tests"
+                    
+                    // Run tests with Maven (reduced output)
+                    sh 'mvn test -q'
+                }
+            }
+            post {
+                always {
+                    // Publish test results
+                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                          allowEmptyResults: true
+                }
+            }
+        }
+        
+        stage('Package Application') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "Packaging application"
+                    
+                    // Package with Maven (reduced output)
+                    sh 'mvn package -DskipTests -q'
+                    
+                    // Verify JAR was created (reduced output)
+                    sh '''
+                        echo "Verifying JAR creation"
+                        ls -la target/*.jar | awk '{print $9, $5}' | xargs echo "JAR created:"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "Cleaning up development build"
+            cleanWs()
+        }
+        
+        success {
+            echo "DEVELOPMENT BUILD SUCCESS"
+            echo "${SERVICE_NAME} build completed successfully"
+            echo "Unit tests passed"
+            echo "Package validation successful"
+            echo "Ready for merge to develop branch"
+        }
+        
+        failure {
+            echo "DEVELOPMENT BUILD FAILED"
+            echo "Build failed for ${SERVICE_NAME}"
+            echo "Please fix issues before merging to develop"
+        }
+        
+        unstable {
+            echo "Development build is unstable"
+            echo "Some tests may have failed - please review"
+        }
+    }
+} 
