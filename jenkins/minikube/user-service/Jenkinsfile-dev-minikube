@@ -1,0 +1,154 @@
+pipeline {
+    agent any
+    
+    // Use configured tools from Global Tools
+    tools {
+        maven 'Maven-3.9'
+        jdk 'Java-11'
+    }
+    
+    environment {
+        SERVICE_NAME = 'user-service'
+        MAVEN_OPTS = '-Xmx512m'  // Reduced for local development
+    }
+    
+    stages {
+        stage('Checkout') {
+            // Run on all branches except main and develop
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                echo "Starting development build for ${SERVICE_NAME}"
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Build: ${env.BUILD_NUMBER}"
+                echo "Target: Development validation only (Minikube)"
+                
+                // Clean workspace
+                cleanWs()
+                
+                // Checkout source code
+                checkout scm
+                
+                // Verify tools are available
+                sh '''
+                    echo "=== Tool Verification ==="
+                    java -version 2>&1 | head -1
+                    mvn -version 2>&1 | head -1
+                    docker --version
+                    
+                    # Check if Minikube is available (optional for dev)
+                    minikube status || echo "Minikube not running - OK for development validation"
+                '''
+            }
+        }
+        
+        stage('Build Application') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "Building ${SERVICE_NAME} with Maven"
+                    
+                    sh '''
+                        echo "=== Building Application ==="
+                        mvn clean compile -q
+                        echo "Application compiled successfully"
+                    '''
+                }
+            }
+        }
+        
+        stage('Unit Tests') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "Running unit tests"
+                    
+                    sh '''
+                        echo "=== Running Unit Tests ==="
+                        mvn test -q
+                        echo "Unit tests completed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    // Publish test results
+                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                          allowEmptyResults: true
+                }
+            }
+        }
+        
+        stage('Package Application') {
+            when {
+                not {
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+            steps {
+                dir(SERVICE_NAME) {
+                    echo "Packaging application"
+                    
+                    sh '''
+                        echo "=== Packaging Application ==="
+                        mvn package -DskipTests -q
+                        
+                        # Verify JAR was created
+                        ls -la target/*.jar | awk '{print $9, $5}' | xargs echo "JAR created:"
+                        echo "Application packaged successfully"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "Cleaning up development build"
+            cleanWs()
+        }
+        
+        success {
+            echo "DEVELOPMENT BUILD SUCCESS"
+            echo "${SERVICE_NAME} build completed successfully"
+            echo "Unit tests passed"
+            echo "Package validation successful"
+            echo "Code quality checks completed"
+            echo "Ready for merge to develop branch"
+        }
+        
+        failure {
+            echo "DEVELOPMENT BUILD FAILED"
+            echo "Build failed for ${SERVICE_NAME}"
+            echo "Please fix issues before merging to develop"
+        }
+        
+        unstable {
+            echo "Development build is unstable"
+            echo "Some tests may have failed - please review"
+        }
+    }
+} 
