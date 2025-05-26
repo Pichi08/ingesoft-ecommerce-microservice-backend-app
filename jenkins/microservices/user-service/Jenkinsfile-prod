@@ -50,6 +50,9 @@ pipeline {
         }
         
         stage('Build Application') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} for PRODUCTION"
@@ -61,6 +64,9 @@ pipeline {
         }
         
         stage('Unit Tests') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running unit tests"
@@ -79,6 +85,9 @@ pipeline {
         }
         
         stage('Integration Tests') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running integration tests"
@@ -97,6 +106,9 @@ pipeline {
         }
         
         stage('Security Scans') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running security scans for production"
@@ -123,6 +135,9 @@ pipeline {
         }
         
         stage('Package Application') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Packaging application for production"
@@ -134,6 +149,9 @@ pipeline {
         }
         
         stage('Build and Push Docker Image') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     echo "Building and pushing Docker image for PRODUCTION"
@@ -168,6 +186,9 @@ pipeline {
         }
         
         stage('Prepare Production Environment') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     echo "Preparing PRODUCTION environment"
@@ -203,6 +224,9 @@ pipeline {
         }
         
         stage('Manual Approval') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     echo "PRODUCTION DEPLOYMENT APPROVAL REQUIRED"
@@ -242,6 +266,9 @@ pipeline {
         }
         
         stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     echo "Deploying to PRODUCTION Kubernetes"
@@ -270,7 +297,10 @@ pipeline {
         
         stage('Production Health Checks') {
             when {
-                not { params.SKIP_HEALTH_CHECKS }
+                allOf {
+                    branch 'main'
+                    not { params.SKIP_HEALTH_CHECKS }
+                }
             }
             steps {
                 script {
@@ -313,6 +343,9 @@ pipeline {
         }
         
         stage('Production Smoke Tests') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     echo "Running PRODUCTION smoke tests"
