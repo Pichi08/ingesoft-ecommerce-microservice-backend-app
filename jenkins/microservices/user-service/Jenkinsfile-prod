@@ -19,10 +19,6 @@ pipeline {
     
     stages {
         stage('Checkout') {
-            // Only run on main branch
-            when {
-                branch 'main'
-            }
             steps {
                 echo "Starting PRODUCTION build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
@@ -48,9 +44,6 @@ pipeline {
         }
         
         stage('Build Application') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} for PRODUCTION"
@@ -62,9 +55,6 @@ pipeline {
         }
         
         stage('Unit Tests') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running unit tests"
@@ -83,9 +73,6 @@ pipeline {
         }
         
         stage('Integration Tests') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running integration tests"
@@ -104,9 +91,6 @@ pipeline {
         }
         
         stage('Security Scans') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Running security scans for production"
@@ -133,9 +117,6 @@ pipeline {
         }
         
         stage('Package Application') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Packaging application for production"
@@ -147,9 +128,6 @@ pipeline {
         }
         
         stage('Build and Push Docker Image') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "Building and pushing Docker image for PRODUCTION"
@@ -185,9 +163,6 @@ pipeline {
         }
         
         stage('Prepare Production Environment') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "Preparing PRODUCTION environment"
@@ -223,9 +198,6 @@ pipeline {
         }
         
         stage('Manual Approval') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "PRODUCTION DEPLOYMENT APPROVAL REQUIRED"
@@ -265,9 +237,6 @@ pipeline {
         }
         
         stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "Deploying to PRODUCTION Kubernetes"
@@ -295,9 +264,6 @@ pipeline {
         }
         
         stage('Production Health Checks') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     if (params.SKIP_HEALTH_CHECKS) {
@@ -344,9 +310,6 @@ pipeline {
         }
         
         stage('Production Smoke Tests') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     echo "Running PRODUCTION smoke tests"
