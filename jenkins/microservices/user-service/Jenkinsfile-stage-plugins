@@ -20,9 +20,6 @@
  * Deploys to: ecommerce-stage namespace
  */
 
-// Load shared functions
-def buildLib = load 'jenkins/shared/build-functions.groovy'
-
 pipeline {
     agent any
     
@@ -136,7 +133,7 @@ pipeline {
                     echo "Building and pushing Docker image"
                     
                     // Generate staging version tag
-                    def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
+                    def imageTag = "stage-${env.BUILD_NUMBER}"
                     echo "Image tag: ${imageTag}"
                     
                     // Use Azure CLI to authenticate and push

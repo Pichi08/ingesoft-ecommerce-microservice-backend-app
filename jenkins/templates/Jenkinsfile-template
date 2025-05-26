@@ -17,10 +17,6 @@
  * {NAMESPACE} → ecommerce-stage
  */
 
-// Load shared functions
-def buildLib = load 'jenkins/shared/build-functions.groovy'
-def deployLib = load 'jenkins/shared/deploy-functions.groovy'
-
 pipeline {
     agent any
     
@@ -59,7 +55,10 @@ pipeline {
             steps {
                 script {
                     echo "Building ${SERVICE_NAME}"
-                    buildLib.buildMavenProject(SERVICE_NAME, false)
+                    // Build with Maven
+                    dir(SERVICE_NAME) {
+                        sh 'mvn clean compile'
+                    }
                 }
             }
         }
@@ -68,7 +67,10 @@ pipeline {
             steps {
                 script {
                     echo "Running unit tests for ${SERVICE_NAME}"
-                    buildLib.runUnitTests(SERVICE_NAME)
+                    // Run unit tests
+                    dir(SERVICE_NAME) {
+                        sh 'mvn test'
+                    }
                 }
             }
             post {
@@ -91,7 +93,10 @@ pipeline {
             steps {
                 script {
                     echo "Running integration tests for ${SERVICE_NAME}"
-                    buildLib.runIntegrationTests(SERVICE_NAME)
+                    // Run integration tests
+                    dir(SERVICE_NAME) {
+                        sh 'mvn verify -Dspring.profiles.active=test'
+                    }
                 }
             }
         }
@@ -99,10 +104,24 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
+                    // Generate version tag based on branch
+                    def imageTag
+                    if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
+                        imageTag = "v1.0.${env.BUILD_NUMBER}"
+                    } else if (env.BRANCH_NAME == 'develop') {
+                        imageTag = "stage-${env.BUILD_NUMBER}"
+                    } else {
+                        def cleanBranch = env.BRANCH_NAME.replaceAll(/[^a-zA-Z0-9]/, '-').toLowerCase()
+                        imageTag = "${cleanBranch}-${env.BUILD_NUMBER}"
+                    }
                     echo "Building Docker image with tag: ${imageTag}"
                     
-                    buildLib.buildDockerImage(SERVICE_NAME, imageTag, ACR_NAME)
+                    // Build Docker image
+                    sh """
+                        docker build -t ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:${imageTag} \\
+                            -f ${SERVICE_NAME}/Dockerfile .
+                    """
+                    
                     env.IMAGE_TAG = imageTag
                 }
             }

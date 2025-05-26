@@ -13,8 +13,38 @@
  * Target: ecommerce-system namespace
  */
 
-// Load shared functions
-def deployLib = load 'jenkins/shared/deploy-functions.groovy'
+// Helper functions
+def healthCheck(String serviceName, String namespace, int port = 8080) {
+    echo "Running health check for ${serviceName}"
+    
+    try {
+        // Simple health check using kubectl port-forward
+        sh """
+            timeout 30 kubectl port-forward svc/${serviceName} ${port}:${port} -n ${namespace} &
+            sleep 5
+            curl -f http://localhost:${port}/actuator/health || exit 1
+        """
+        
+        echo "Health check passed for ${serviceName}"
+        return true
+    } catch (Exception e) {
+        echo "Health check failed for ${serviceName}: ${e.message}"
+        return false
+    }
+}
+
+def getServiceUrl(String serviceName, String namespace) {
+    def serviceUrl = sh(
+        script: "kubectl get svc ${serviceName} -n ${namespace} -o jsonpath='{.status.loadBalancer.ingress[0].ip}:{.spec.ports[0].port}'",
+        returnStdout: true
+    ).trim()
+    
+    if (serviceUrl && !serviceUrl.startsWith(':')) {
+        return "http://${serviceUrl}"
+    } else {
+        return "Service URL not available (LoadBalancer pending)"
+    }
+}
 
 pipeline {
     agent any
@@ -53,8 +83,15 @@ pipeline {
                 script {
                     echo "Setting up Azure connection"
                     
-                    // Setup Azure and AKS connection
-                    deployLib.setupAzureConnection(AZURE_RESOURCE_GROUP, AKS_CLUSTER_NAME)
+                    // Setup Azure and AKS connection using Azure CLI
+                    azureCLI(
+                        principalCredentialId: 'azure-credentials',
+                        commands: [
+                            [script: 'echo "Azure CLI Authentication successful"'],
+                            [script: 'az account show'],
+                            [script: "az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME} --overwrite-existing"]
+                        ]
+                    )
                     
                     // Verify cluster connectivity
                     sh '''
@@ -73,7 +110,10 @@ pipeline {
                     echo "Preparing infrastructure namespace"
                     
                     // Ensure namespace exists
-                    deployLib.ensureNamespace(NAMESPACE)
+                    sh """
+                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        echo "Namespace ${NAMESPACE} ready"
+                    """
                     
                     // Apply base configurations
                     sh '''
@@ -95,7 +135,9 @@ pipeline {
                         sh 'kubectl apply -f k8s/infrastructure/zipkin.yaml'
                         
                         // Wait for Zipkin to be ready
-                        deployLib.waitForServiceReady('zipkin', NAMESPACE, 180)
+                        sh """
+                            kubectl wait --for=condition=ready pod -l app=zipkin -n ${NAMESPACE} --timeout=180s
+                        """
                         
                         echo "Zipkin deployed successfully"
                         
@@ -117,7 +159,9 @@ pipeline {
                         sh 'kubectl apply -f k8s/infrastructure/service-discovery.yaml'
                         
                         // Wait for Service Discovery to be ready
-                        deployLib.waitForServiceReady('service-discovery', NAMESPACE, 300)
+                        sh """
+                            kubectl wait --for=condition=ready pod -l app=service-discovery -n ${NAMESPACE} --timeout=300s
+                        """
                         
                         // Give extra time for Eureka to fully initialize
                         echo "Waiting for Eureka to fully initialize"
@@ -143,7 +187,9 @@ pipeline {
                         sh 'kubectl apply -f k8s/infrastructure/cloud-config.yaml'
                         
                         // Wait for Cloud Config to be ready
-                        deployLib.waitForServiceReady('cloud-config', NAMESPACE, 300)
+                        sh """
+                            kubectl wait --for=condition=ready pod -l app=cloud-config -n ${NAMESPACE} --timeout=300s
+                        """
                         
                         // Give time for Cloud Config to register with Eureka
                         echo "Waiting for Cloud Config to register with Eureka"
@@ -169,7 +215,9 @@ pipeline {
                         sh 'kubectl apply -f k8s/infrastructure/api-gateway.yaml'
                         
                         // Wait for API Gateway to be ready
-                        deployLib.waitForServiceReady('api-gateway', NAMESPACE, 300)
+                        sh """
+                            kubectl wait --for=condition=ready pod -l app=api-gateway -n ${NAMESPACE} --timeout=300s
+                        """
                         
                         // Give time for API Gateway to register and configure routes
                         echo "Waiting for API Gateway to configure routes"
@@ -200,25 +248,25 @@ pipeline {
                     '''
                     
                     // Check Zipkin
-                    def zipkinHealthy = deployLib.healthCheck('zipkin', NAMESPACE, 9411)
+                    def zipkinHealthy = healthCheck('zipkin', NAMESPACE, 9411)
                     if (!zipkinHealthy) {
                         echo "Zipkin health check failed"
                     }
                     
                     // Check Eureka
-                    def eurekaHealthy = deployLib.healthCheck('service-discovery', NAMESPACE, 8761)
+                    def eurekaHealthy = healthCheck('service-discovery', NAMESPACE, 8761)
                     if (!eurekaHealthy) {
                         echo "Eureka health check failed"
                     }
                     
                     // Check Cloud Config
-                    def configHealthy = deployLib.healthCheck('cloud-config', NAMESPACE, 8888)
+                    def configHealthy = healthCheck('cloud-config', NAMESPACE, 8888)
                     if (!configHealthy) {
                         echo "Cloud Config health check failed"
                     }
                     
                     // Check API Gateway
-                    def gatewayHealthy = deployLib.healthCheck('api-gateway', NAMESPACE, 8080)
+                    def gatewayHealthy = healthCheck('api-gateway', NAMESPACE, 8080)
                     if (!gatewayHealthy) {
                         echo "API Gateway health check failed"
                     }
@@ -279,7 +327,7 @@ pipeline {
             echo "All infrastructure services are deployed and ready"
             
             script {
-                def gatewayUrl = deployLib.getServiceUrl('api-gateway', NAMESPACE)
+                def gatewayUrl = getServiceUrl('api-gateway', NAMESPACE)
                 echo "API Gateway URL: ${gatewayUrl}"
                 echo "Eureka Dashboard: ${gatewayUrl.replace(':8080', ':8761')}"
                 echo "Zipkin Dashboard: ${gatewayUrl.replace(':8080', ':9411')}"
