@@ -1,5 +1,3 @@
-def buildLib = load 'jenkins/shared/build-functions.groovy'
-
 pipeline {
     agent any
     
@@ -157,7 +155,8 @@ pipeline {
                     echo "Building and pushing Docker image for PRODUCTION"
                     
                     // Generate production version tag
-                    def imageTag = buildLib.generateVersionTag(env.BRANCH_NAME, env.BUILD_NUMBER)
+                    def cleanBranch = env.BRANCH_NAME.replaceAll(/[^a-zA-Z0-9]/, '-').toLowerCase()
+                    def imageTag = "v1.0.${env.BUILD_NUMBER}"
                     echo "Production image tag: ${imageTag}"
                     
                     // Use Azure CLI to authenticate and push
