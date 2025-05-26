@@ -132,11 +132,6 @@ pipeline {
         failure {
             echo "DEVELOPMENT BUILD FAILED"
             echo "Build failed for ${SERVICE_NAME}"
-            echo "Common issues to check:"
-            echo "- Compilation errors"
-            echo "- Unit test failures"
-            echo "- Maven configuration issues"
-            echo "- Missing dependencies"
             echo "Please fix issues before merging to develop"
         }
         

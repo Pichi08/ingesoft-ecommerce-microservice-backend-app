@@ -1,26 +1,3 @@
-/**
- * Production Pipeline for User Service
- * 
- * Triggered on: Commits to 'main' branch
- * Purpose: Full testing, manual approval, and production deployment
- * 
- * Required Plugins:
- * - Pipeline
- * - Maven Integration  
- * - Azure CLI
- * - Kubernetes
- * - Docker Pipeline
- * - JUnit
- * 
- * Required Global Tools:
- * - Maven-3.9
- * - Java-11
- * - Docker
- * 
- * Deploys to: ecommerce-prod namespace (with manual approval)
- */
-
-// Load shared functions
 def buildLib = load 'jenkins/shared/build-functions.groovy'
 
 pipeline {
@@ -30,11 +7,6 @@ pipeline {
     tools {
         maven 'Maven-3.9'
         jdk 'Java-11'
-    }
-    
-    // Only run on main branch
-    when {
-        branch 'main'
     }
     
     environment {
@@ -49,6 +21,10 @@ pipeline {
     
     stages {
         stage('Checkout') {
+            // Only run on main branch
+            when {
+                branch 'main'
+            }
             steps {
                 echo "Starting PRODUCTION build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
