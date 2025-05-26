@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: ecommerce-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: acrecommerce69.azurecr.io/api-gateway:0.1.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SPRING_CONFIG_LOCATION
+          value: "file:/config/"
+        - name: SPRING_ZIPKIN_BASE_URL
+          value: "http://zipkin:9411"
+        - name: SPRING_CONFIG_IMPORT
+          value: "optional:configserver:http://cloud-config:9296"
+        - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+          value: "http://service-discovery:8761/eureka"
+        - name: EUREKA_INSTANCE
+          value: "api-gateway"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        resources:
+          limits:
+            memory: "1024Mi"
+            cpu: "500m"
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+      volumes:
+      - name: config-volume
+        configMap:
+          name: api-gateway-config 

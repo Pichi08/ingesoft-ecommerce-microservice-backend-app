@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spring-config
+  namespace: ecommerce-system
+data:
+  SPRING_PROFILES_ACTIVE: "dev"
+  ZIPKIN_BASE_URL: "http://zipkin.ecommerce-system.svc.cluster.local:9411"
+  CONFIG_SERVER_URL: "http://cloud-config.ecommerce-system.svc.cluster.local:9296"
+  EUREKA_SERVER_URL: "http://service-discovery.ecommerce-system.svc.cluster.local:8761/eureka"
+  
