@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: ecommerce-system
+  labels:
+    app: api-gateway
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tier: infrastructure
+    spec:
+      containers:
+      - name: api-gateway
+        image: acrecommerce69.azurecr.io/api-gateway:0.1.0
+        imagePullPolicy: Never  # Use local image only
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SPRING_ZIPKIN_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: ZIPKIN_BASE_URL
+        - name: SPRING_CONFIG_IMPORT
+          value: "optional:configserver:http://cloud-config.ecommerce-system:9296"
+        - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: EUREKA_SERVER_URL
+        - name: JAVA_OPTS
+          value: "-Xmx512m -Xms256m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+        - name: SPRING_MAIN_LAZY_INITIALIZATION
+          value: "true"
+        resources:
+          limits:
+            memory: "1024Mi"   # Increased memory for better performance
+            cpu: "500m"        # Increased CPU
+          requests:
+            memory: "512Mi"    # Increased memory
+            cpu: "250m"        # Increased CPU
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 300  # Increased to 5 minutes
+          periodSeconds: 30         
+          timeoutSeconds: 20        # Increased timeout
+          failureThreshold: 6       # More tolerance
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 300  # Increased to 4 minutes
+          periodSeconds: 30         
+          timeoutSeconds: 20        # Increased timeout
+          failureThreshold: 15      # Much more tolerance
+        volumeMounts:
+        - name: api-gateway-config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: api-gateway-config
+        configMap:
+          name: api-gateway-config 

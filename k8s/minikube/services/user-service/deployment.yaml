@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: ecommerce-system
+  labels:
+    app: user-service
+    tier: business
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        tier: business
+    spec:
+      containers:
+      - name: user-service
+        image: acrecommerce69.azurecr.io/user-service:0.1.0
+        imagePullPolicy: Never  # Use local image only
+        ports:
+        - containerPort: 8700
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SPRING_ZIPKIN_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: ZIPKIN_BASE_URL
+        - name: SPRING_CONFIG_IMPORT
+          value: "optional:configserver:http://cloud-config.ecommerce-system:9296"
+        - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: EUREKA_SERVER_URL
+        - name: EUREKA_INSTANCE
+          value: "user-service"
+        - name: JAVA_OPTS
+          valueFrom:
+            configMapKeyRef:
+              name: minikube-config
+              key: JAVA_OPTS
+        - name: SPRING_MAIN_LAZY_INITIALIZATION
+          valueFrom:
+            configMapKeyRef:
+              name: minikube-config
+              key: SPRING_MAIN_LAZY_INITIALIZATION
+        resources:
+          limits:
+            memory: "1024Mi"   # Increased for better performance
+            cpu: "500m"        # Increased CPU
+          requests:
+            memory: "512Mi"    # Increased memory
+            cpu: "250m"        # Increased CPU
+        livenessProbe:
+          httpGet:
+            path: /user-service/actuator/health
+            port: 8700
+          initialDelaySeconds: 300  # Increased to 5 minutes
+          periodSeconds: 30         
+          timeoutSeconds: 20        # Increased timeout
+          failureThreshold: 6       # More tolerance
+        readinessProbe:
+          httpGet:
+            path: /user-service/actuator/health
+            port: 8700
+          initialDelaySeconds: 240  # Increased to 4 minutes
+          periodSeconds: 20         
+          timeoutSeconds: 15        # Increased timeout
+          failureThreshold: 15      # Much more tolerance 

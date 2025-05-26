@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spring-config
+  namespace: ecommerce-system
+data:
+  SPRING_PROFILES_ACTIVE: "dev"
+  ZIPKIN_BASE_URL: "http://zipkin.ecommerce-system.svc.cluster.local:9411"
+  CONFIG_SERVER_URL: "http://cloud-config.ecommerce-system.svc.cluster.local:9296"
+  EUREKA_SERVER_URL: "http://service-discovery.ecommerce-system.svc.cluster.local:8761/eureka"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minikube-config
+  namespace: ecommerce-system
+data:
+  # Minikube-specific settings
+  ENVIRONMENT: "local"
+  RESOURCE_LIMIT_MEMORY: "512Mi"
+  RESOURCE_LIMIT_CPU: "300m"
+  
+  # JVM optimization for limited resources
+  JAVA_OPTS: "-Xmx384m -Xms256m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+  
+  # Spring Boot optimization
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+  SPRING_MAIN_LAZY_INITIALIZATION: "true"
+  LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: "WARN"
+  LOGGING_LEVEL_COM_NETFLIX: "WARN" 

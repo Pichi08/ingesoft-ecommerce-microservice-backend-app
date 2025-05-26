@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-discovery
+  namespace: ecommerce-system
+  labels:
+    app: service-discovery
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-discovery
+  template:
+    metadata:
+      labels:
+        app: service-discovery
+        tier: infrastructure
+    spec:
+      containers:
+      - name: service-discovery
+        image: acrecommerce69.azurecr.io/service-discovery:0.1.0
+        imagePullPolicy: Never  # Use local image only
+        ports:
+        - containerPort: 8761
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SPRING_ZIPKIN_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: ZIPKIN_BASE_URL
+        - name: EUREKA_INSTANCE
+          value: "service-discovery"
+        - name: JAVA_OPTS
+          value: "-Xmx400m -Xms200m -XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -Djava.security.egd=file:/dev/./urandom"
+        - name: SPRING_MAIN_LAZY_INITIALIZATION
+          value: "true"
+        resources:
+          limits:
+            memory: "800Mi"    # Increased memory limit
+            cpu: "500m"
+          requests:
+            memory: "300Mi"    # Increased memory request
+            cpu: "100m" 
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8761
+          initialDelaySeconds: 180  # Increased from 90s
+          periodSeconds: 30         # Increased from 15s
+          timeoutSeconds: 15        # Increased from 10s
+          failureThreshold: 5       # Increased from 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8761
+          initialDelaySeconds: 120  # Increased from 60s
+          periodSeconds: 15         # Increased from 10s
+          timeoutSeconds: 10        # Increased from 5s
+          failureThreshold: 10      # Increased from 3 

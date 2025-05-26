@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-config
+  namespace: ecommerce-system
+  labels:
+    app: cloud-config
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloud-config
+  template:
+    metadata:
+      labels:
+        app: cloud-config
+        tier: infrastructure
+    spec:
+      containers:
+      - name: cloud-config
+        image: acrecommerce69.azurecr.io/cloud-config:0.1.0
+        imagePullPolicy: Never  # Use local image only
+        ports:
+        - containerPort: 9296
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SPRING_ZIPKIN_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: ZIPKIN_BASE_URL
+        - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-config
+              key: EUREKA_SERVER_URL
+        - name: JAVA_OPTS
+          value: "-Xmx384m -Xms192m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+        - name: SPRING_MAIN_LAZY_INITIALIZATION
+          value: "true"
+        resources:
+          limits:
+            memory: "512Mi"     # Increased from 384Mi
+            cpu: "400m"         # Increased from 300m
+          requests:
+            memory: "256Mi"     # Increased from 192Mi
+            cpu: "200m"         # Increased from 150m
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9296
+          initialDelaySeconds: 240  # Increased to 4 minutes
+          periodSeconds: 30         # Increased from 15s
+          timeoutSeconds: 15        # Increased from 10s
+          failureThreshold: 5       # Increased from 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9296
+          initialDelaySeconds: 90   # Increased from 60s
+          periodSeconds: 15         # Increased from 10s
+          timeoutSeconds: 10        # Increased from 5s
+          failureThreshold: 10      # Increased from 3 

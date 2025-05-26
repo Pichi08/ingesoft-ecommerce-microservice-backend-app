@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zipkin
+  namespace: ecommerce-system
+  labels:
+    app: zipkin
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zipkin
+  template:
+    metadata:
+      labels:
+        app: zipkin
+        tier: infrastructure
+    spec:
+      containers:
+      - name: zipkin
+        image: openzipkin/zipkin:latest
+        imagePullPolicy: IfNotPresent  # Use cached image if available
+        ports:
+        - containerPort: 9411
+        env:
+        - name: STORAGE_TYPE
+          value: "mem"
+        - name: JAVA_OPTS
+          valueFrom:
+            configMapKeyRef:
+              name: minikube-config
+              key: JAVA_OPTS
+        resources:
+          limits:
+            memory: "256Mi"    # Reduced from 512Mi
+            cpu: "200m"        # Reduced from 300m
+          requests:
+            memory: "128Mi"    # Reduced from 256Mi
+            cpu: "100m"        # Reduced from 150m
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9411
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9411
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zipkin
+  namespace: ecommerce-system
+  labels:
+    app: zipkin
+spec:
+  selector:
+    app: zipkin
+  ports:
+  - port: 9411
+    targetPort: 9411
+    name: http
+  type: NodePort  # Use NodePort for Minikube access 
