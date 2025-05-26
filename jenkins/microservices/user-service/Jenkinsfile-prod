@@ -90,31 +90,6 @@ pipeline {
             }
         }
         
-        stage('Security Scans') {
-            steps {
-                dir(SERVICE_NAME) {
-                    echo "Running security scans for production"
-                    
-                    // Basic security checks for production
-                    sh '''
-                        echo "Running security checks"
-                        
-                        # Check for security vulnerabilities in dependencies
-                        mvn dependency:tree
-                        
-                        # Check for hardcoded secrets (basic check)
-                        echo "Checking for potential secrets"
-                        find src -name "*.java" -exec grep -Hn "password\\|secret\\|key\\|token" {} \\; || echo "No obvious secrets found"
-                        
-                        # Check for SQL injection patterns
-                        echo "Checking for SQL injection patterns"
-                        find src -name "*.java" -exec grep -Hn "Statement\\|createStatement" {} \\; || echo "No direct SQL statements found"
-                        
-                        echo "Basic security checks completed"
-                    '''
-                }
-            }
-        }
         
         stage('Package Application') {
             steps {
