@@ -107,14 +107,17 @@ pipeline {
                 script {
                     echo "Building and pushing Docker image for PRODUCTION"
                     
-                    // Generate production version tag
-                    def cleanBranch = env.BRANCH_NAME.replaceAll(/[^a-zA-Z0-9]/, '-').toLowerCase()
-                    def imageTag = "v1.0.${env.BUILD_NUMBER}"
-                    echo "Production image tag: ${imageTag}"
-                    
-                    // Use withCredentials for better error handling
-                    withCredentials([azureServicePrincipal('azure-credentials')]) {
-                        try {
+                    try {
+                        // Generate production version tag (simplified)
+                        echo "Generating image tag..."
+                        def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                        echo "Production image tag: ${imageTag}"
+                        
+                        echo "Current branch: ${env.BRANCH_NAME}"
+                        echo "Build number: ${env.BUILD_NUMBER}"
+                        
+                        // Use withCredentials for better error handling
+                        withCredentials([azureServicePrincipal('azure-credentials')]) {
                             echo "Step 1: Azure CLI Authentication"
                             sh '''
                                 az login --service-principal \
@@ -148,18 +151,18 @@ pipeline {
                             sh "docker push ${ACR_NAME}.azurecr.io/${SERVICE_NAME}:production-latest"
                             
                             echo "Production Docker image pushed successfully"
-                            
-                        } catch (Exception e) {
-                            echo "Docker build/push failed: ${e.message}"
-                            echo "Checking Docker and Azure CLI status:"
-                            sh 'docker --version || echo "Docker not available"'
-                            sh 'az --version || echo "Azure CLI not available"'
-                            throw e
                         }
+                        
+                        // Store image tag for deployment
+                        env.IMAGE_TAG = imageTag
+                        echo "Image tag stored: ${env.IMAGE_TAG}"
+                        
+                    } catch (Exception e) {
+                        echo "ERROR in Build and Push Docker Image stage: ${e.message}"
+                        echo "Exception class: ${e.class}"
+                        echo "Stack trace: ${e.printStackTrace()}"
+                        throw e
                     }
-                    
-                    // Store image tag for deployment
-                    env.IMAGE_TAG = imageTag
                 }
             }
         }
