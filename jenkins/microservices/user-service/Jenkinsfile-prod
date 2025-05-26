@@ -12,7 +12,7 @@ pipeline {
         ACR_NAME = 'acrecommerce69'
         AZURE_RESOURCE_GROUP = 'AKS-ecommerce'
         AKS_CLUSTER_NAME = 'KubeCluster'
-        NAMESPACE = 'ecommerce-prod'
+        NAMESPACE = 'ecommerce-system'
         SERVICE_PORT = '8700'
         MAVEN_OPTS = '-Xmx1024m'
     }
