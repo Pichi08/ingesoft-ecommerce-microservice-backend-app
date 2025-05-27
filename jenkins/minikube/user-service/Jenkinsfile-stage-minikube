@@ -27,46 +27,27 @@ pipeline {
                 checkout scm
                 
                 script {
-                    // Detect branch after checkout using multiple strategies
+                    // Detect branch from git log after checkout
                     def branchName = env.BRANCH_NAME
+
+                    echo "Branch name before logic: ${branchName}"
                     
                     if (!branchName || branchName == 'null') {
-                        // Strategy 1: Check git log for branch info
-                        try {
-                            def gitLog = sh(
-                                script: "git log --oneline --decorate -1",
-                                returnStdout: true
-                            ).trim()
-                            echo "Git log: ${gitLog}"
-                            
-                            // Extract branch from origin/branch-name pattern
-                            if (gitLog.contains('origin/develop')) {
-                                branchName = 'develop'
-                            } else if (gitLog.contains('origin/main')) {
-                                branchName = 'main'
-                            }
-                        } catch (Exception e) {
-                            echo "Git log strategy failed: ${e.message}"
+                        // Get branch from git log decorations
+                        def gitLog = sh(
+                            script: "git log --oneline --decorate -1",
+                            returnStdout: true
+                        ).trim()
+                        echo "Git log: ${gitLog}"
+                        
+                        // Extract branch from origin/branch-name pattern
+                        if (gitLog.contains('origin/develop')) {
+                            branchName = 'develop'
+                        } else if (gitLog.contains('origin/main')) {
+                            branchName = 'main'
+                        } else {
+                            branchName = 'unknown'
                         }
-                    }
-                    
-                    if (!branchName || branchName == 'null') {
-                        // Strategy 2: Check which remote branch we're tracking
-                        try {
-                            def remoteBranch = sh(
-                                script: "git branch -r --contains HEAD | head -1 | sed 's/.*origin\\///g' | tr -d ' '",
-                                returnStdout: true
-                            ).trim()
-                            echo "Remote branch: ${remoteBranch}"
-                            branchName = remoteBranch
-                        } catch (Exception e) {
-                            echo "Remote branch strategy failed: ${e.message}"
-                        }
-                    }
-                    
-                    if (!branchName || branchName == 'null') {
-                        // Strategy 3: Use GIT_BRANCH environment variable if available
-                        branchName = env.GIT_BRANCH?.replaceAll('origin/', '') ?: 'unknown'
                     }
                     
                     env.DETECTED_BRANCH = branchName
