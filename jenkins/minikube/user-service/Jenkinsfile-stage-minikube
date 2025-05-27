@@ -14,104 +14,59 @@ pipeline {
     environment {
         SERVICE_NAME = 'user-service'
         MAVEN_OPTS = '-Xmx512m'
+        JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
+        MAVEN_HOME = "${HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
+        PATH = "${JAVA_HOME}/bin:${MAVEN_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
     }
     
     stages {
-        stage('Setup Environment') {
-            steps {
-                script {
-                    // Set up Java environment once and store for reuse
-                    env.JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
-                    env.MAVEN_HOME = "${env.HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
-                    env.PATH = "${env.JAVA_HOME}/bin:${env.MAVEN_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
-                }
-                
-                echo "Starting staging build for ${SERVICE_NAME}"
-                echo "Branch: ${env.BRANCH_NAME}"
-                echo "Build: ${env.BUILD_NUMBER}"
-                echo "Target: Build and test only - no deployment"
-                echo "Java Home: ${env.JAVA_HOME}"
-                echo "Maven Home: ${env.MAVEN_HOME}"
-            }
-        }
-        
         stage('Checkout') {
             steps {
-                // Clean workspace
+                echo "Starting staging build for ${SERVICE_NAME}"
                 cleanWs()
-                
-                // Checkout source code
                 checkout scm
                 
                 // Verify environment
                 sh '''
                     echo "=== Environment Verification ==="
-                    java -version 2>&1 | head -1
-                    mvn -version 2>&1 | head -1
-                    docker --version
+                    java -version
+                    mvn -version
                     
-                    # Check Minikube installation
-                    minikube version || exit 1
-                    
-                    # Check if minikube is running
-                    echo "Checking minikube status..."
-                    if minikube status >/dev/null 2>&1; then
-                        echo "✓ Minikube is running"
-                    else
+                    # Ensure minikube is running
+                    if ! minikube status >/dev/null 2>&1; then
                         echo "Starting minikube..."
                         minikube start --driver=docker --container-runtime=docker --memory=4096 --cpus=2
                     fi
                     
                     # Configure Docker to use Minikube's daemon
                     eval $(minikube docker-env)
-                    
-                    # Test Docker connectivity
-                    docker ps >/dev/null && echo "✓ Minikube Docker daemon accessible" || echo "✗ Docker daemon not accessible"
-                    
-                    # Test kubectl connectivity
-                    kubectl cluster-info | head -1 && echo "✓ Kubectl connected to Minikube" || echo "✗ Kubectl connection failed"
-                    
-                    echo "Environment verification completed"
+                    docker ps >/dev/null && echo "✓ Minikube Docker daemon ready"
                 '''
             }
         }
         
-        stage('Build Application') {
-            steps {
-                dir(SERVICE_NAME) {
-                    echo "Building ${SERVICE_NAME} for staging"
-                    
-                    sh '''
-                        echo "=== Building Application ==="
-                        echo "Using Java: $(java -version 2>&1 | head -1)"
-                        echo "Using Maven: $(mvn -version 2>&1 | head -1)"
-                        echo "Java Home: $JAVA_HOME"
-                        echo "Maven location: $(which mvn)"
-                        
-                        mvn clean compile -q
-                        echo "Application compiled successfully"
-                    '''
+        stage('Build & Test') {
+            parallel {
+                stage('Build Application') {
+                    steps {
+                        dir(SERVICE_NAME) {
+                            sh 'mvn clean compile -q'
+                        }
+                    }
                 }
-            }
-        }
-        
-        stage('Unit Tests') {
-            steps {
-                dir(SERVICE_NAME) {
-                    echo "Running unit tests"
-                    
-                    sh '''
-                        echo "=== Running Unit Tests ==="
-                        mvn test -q
-                        echo "Unit tests completed"
-                    '''
-                }
-            }
-            post {
-                always {
-                    // Publish test results
-                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
-                          allowEmptyResults: true
+                
+                stage('Unit Tests') {
+                    steps {
+                        dir(SERVICE_NAME) {
+                            sh 'mvn test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
             }
         }
@@ -119,70 +74,40 @@ pipeline {
         stage('Integration Tests') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "Running integration tests"
-                    
-                    sh '''
-                        echo "=== Running Integration Tests ==="
-                        mvn verify -Dspring.profiles.active=test -q
-                        echo "Integration tests completed"
-                    '''
+                    sh 'mvn verify -Dspring.profiles.active=test -q'
                 }
             }
             post {
                 always {
-                    // Publish integration test results
                     junit testResults: "${SERVICE_NAME}/target/failsafe-reports/TEST-*.xml",
                           allowEmptyResults: true
                 }
             }
         }
         
-        stage('Package Application') {
+        stage('Package & Build Image') {
             steps {
                 dir(SERVICE_NAME) {
-                    echo "Packaging application"
-                    
-                    sh '''
-                        echo "=== Packaging Application ==="
-                        mvn package -DskipTests -q
+                    script {
+                        // Package the application
+                        sh 'mvn package -DskipTests -q'
                         
-                        # Verify JAR was created
-                        ls -la target/*.jar | awk '{print $9, $5}' | xargs echo "JAR created:"
-                        echo "Application packaged successfully"
-                    '''
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    echo "Building Docker image in Minikube's Docker daemon"
-                    
-                    def imageTag = "stage-${env.BUILD_NUMBER}"
-                    echo "Staging image tag: ${imageTag}"
-                    
-                    sh """
-                        echo "=== Building Docker Image ==="
+                        // Build single Docker image with current build number
+                        def imageTag = "stage-${env.BUILD_NUMBER}"
                         
-                        # Use Minikube's Docker daemon
-                        eval \$(minikube docker-env)
+                        sh """
+                            # Use Minikube's Docker daemon
+                            eval \$(minikube docker-env)
+                            
+                            # Build Docker image with single tag
+                            docker build -t ${SERVICE_NAME}:${imageTag} .
+                            
+                            echo "Docker image built: ${SERVICE_NAME}:${imageTag}"
+                        """
                         
-                        # Build Docker image
-                        cd ${SERVICE_NAME}
-                        docker build -t ${SERVICE_NAME}:${imageTag} .
-                        
-                        # Tag as stage-latest
-                        docker tag ${SERVICE_NAME}:${imageTag} ${SERVICE_NAME}:stage-latest
-                        
-                        # Verify image was built
-                        docker images | grep ${SERVICE_NAME}
-                        
-                        echo "Docker image built successfully in Minikube"
-                    """
-                    
-                    // Store image tag for reference
-                    env.IMAGE_TAG = imageTag
+                        // Store image tag for reference
+                        env.IMAGE_TAG = imageTag
+                    }
                 }
             }
         }
@@ -190,43 +115,33 @@ pipeline {
     
     post {
         always {
-            echo "Cleaning up staging build"
             cleanWs()
         }
         
         success {
-            echo "STAGING BUILD SUCCESS"
-            echo "${SERVICE_NAME} v${env.IMAGE_TAG} image built successfully"
-            echo "Image: ${SERVICE_NAME}:${env.IMAGE_TAG}"
-            echo "Tagged as: ${SERVICE_NAME}:stage-latest"
-            echo ""
-            echo "Build Summary:"
-            echo "- Unit tests: PASSED"
-            echo "- Integration tests: PASSED"
-            echo "- Docker image: BUILT"
-            echo ""
-            echo "Image is ready for production deployment"
-            echo "Use the production pipeline to deploy this image"
-            echo ""
-            echo "Note: Image was built using Minikube Docker daemon"
-            echo "Image is available in Minikube for deployment"
+            echo """
+                STAGING BUILD SUCCESS
+                Image: ${SERVICE_NAME}:${env.IMAGE_TAG}
+                Build Summary:
+                - Unit tests: PASSED
+                - Integration tests: PASSED  
+                - Docker image: BUILT
+
+                Image ready for production deployment.
+            """
         }
         
         failure {
-            echo "STAGING BUILD FAILED"
-            echo "Build failed for ${SERVICE_NAME}"
-            echo "Please review the logs and fix issues before retrying"
+            echo "STAGING BUILD FAILED - Check logs for details"
             
-            // Clean up any failed containers
             script {
                 try {
                     sh '''
-                        eval $(minikube docker-env)
-                        # Clean up any dangling containers
-                        docker ps -a | grep ${SERVICE_NAME} | awk '{print $1}' | xargs -r docker rm -f > /dev/null 2>&1 || true
+                        eval $(minikube docker-env) 2>/dev/null || true
+                        docker ps -a | grep ${SERVICE_NAME} | awk '{print $1}' | xargs -r docker rm -f >/dev/null 2>&1 || true
                     '''
                 } catch (Exception e) {
-                    echo "Cleanup completed"
+                    // Cleanup completed silently
                 }
             }
         }
