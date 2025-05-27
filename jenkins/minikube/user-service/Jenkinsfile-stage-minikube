@@ -36,6 +36,9 @@ pipeline {
                 // Verify environment
                 sh '''
                     echo "=== Environment Verification ==="
+                    export JAVA_HOME="/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home"
+                    export PATH="$JAVA_HOME/bin:$PATH"
+                    
                     java -version 2>&1 | head -1
                     mvn -version 2>&1 | head -1
                     docker --version
