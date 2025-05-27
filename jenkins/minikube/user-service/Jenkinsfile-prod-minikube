@@ -1,25 +1,9 @@
-/**
- * Production Pipeline for User Service - Minikube Environment
- * 
- * Triggered on: Commits to 'main' branch
- * Purpose: Production deployment with manual approval
- * Target: Local Minikube cluster - production namespace
- * 
- * Required Tools:
- * - Maven-3.9
- * - Java-11
- * - Docker (for Minikube)
- * 
- * Deploys to: ecommerce-system namespace in Minikube (production)
- */
-
 pipeline {
     agent any
     
     // Use configured tools from Global Tools
     tools {
         maven 'Maven-3.9'
-        jdk 'Java-11'
     }
     
     environment {
@@ -28,10 +12,32 @@ pipeline {
         SERVICE_PORT = '8700'
         KUBECONFIG = "${HOME}/.kube/config"
         MAVEN_OPTS = '-Xmx512m'
+        JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
+        MAVEN_HOME = "${HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
+        PATH = "${JAVA_HOME}/bin:${MAVEN_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
     }
-    
+
+    // Add restriction to only run on main branch
+    triggers {
+        githubPush()
+    }
+
     stages {
+        stage('Branch Check') {
+            when {
+                not { branch 'main' }
+            }
+            steps {
+                script {
+                    currentBuild.result = 'NOT_BUILT'
+                    error("Production pipeline only runs on 'main' branch. Current branch: ${env.BRANCH_NAME}")
+                }
+            }
+        }
         stage('Checkout') {
+            when {
+                branch 'main'
+            }
             steps {
                 echo "Starting PRODUCTION build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
@@ -48,9 +54,8 @@ pipeline {
                 // Verify environment
                 sh '''
                     echo "=== Environment Verification ==="
-                    java -version 2>&1 | head -1
-                    mvn -version 2>&1 | head -1
-                    docker --version
+                    java -version
+                    mvn -version
                     
                     # Check Minikube status
                     minikube status || exit 1
@@ -67,29 +72,24 @@ pipeline {
         }
         
         stage('Build Application') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} for PRODUCTION"
-                    
-                    sh '''
-                        echo "=== Building Application for PRODUCTION ==="
-                        mvn clean compile -q
-                        echo "Application compiled successfully"
-                    '''
+                    sh 'mvn clean compile -q'
                 }
             }
         }
         
         stage('Unit Tests') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
-                    echo "Running unit tests"
-                    
-                    sh '''
-                        echo "=== Running Unit Tests ==="
-                        mvn test -q
-                        echo "Unit tests completed"
-                    '''
+                    sh 'mvn test -q'
                 }
             }
             post {
@@ -102,15 +102,12 @@ pipeline {
         }
         
         stage('Integration Tests') {
+            when {
+                branch 'main'
+            }
             steps {
                 dir(SERVICE_NAME) {
-                    echo "Running integration tests"
-                    
-                    sh '''
-                        echo "=== Running Integration Tests ==="
-                        mvn verify -Dspring.profiles.active=test -q
-                        echo "Integration tests completed"
-                    '''
+                    sh 'mvn verify -Dspring.profiles.active=test -q'
                 }
             }
             post {
@@ -126,15 +123,7 @@ pipeline {
             steps {
                 dir(SERVICE_NAME) {
                     echo "Packaging application for production"
-                    
-                    sh '''
-                        echo "=== Packaging Application for PRODUCTION ==="
-                        mvn package -DskipTests -q
-                        
-                        # Verify JAR was created
-                        ls -la target/*.jar | awk '{print $9, $5}' | xargs echo "JAR created:"
-                        echo "Application packaged successfully for PRODUCTION"
-                    '''
+                    sh 'mvn package -DskipTests -q'
                 }
             }
         }
@@ -148,8 +137,6 @@ pipeline {
                     echo "Production image tag: ${imageTag}"
                     
                     sh """
-                        echo "=== Building Docker Image for PRODUCTION ==="
-                        
                         # Use Minikube's Docker daemon
                         eval \$(minikube docker-env)
                         
@@ -157,13 +144,7 @@ pipeline {
                         cd ${SERVICE_NAME}
                         docker build -t ${SERVICE_NAME}:${imageTag} .
                         
-                        # Tag as production-latest
-                        docker tag ${SERVICE_NAME}:${imageTag} ${SERVICE_NAME}:production-latest
-                        
-                        # Verify image was built
-                        docker images | grep ${SERVICE_NAME}
-                        
-                        echo "PRODUCTION Docker image built successfully"
+                        echo "PRODUCTION Docker image built: ${SERVICE_NAME}:${imageTag}"
                     """
                     
                     // Store image tag for deployment
@@ -469,12 +450,10 @@ pipeline {
     
     post {
         always {
-            echo "Cleaning up PRODUCTION build"
             cleanWs()
             
             // Clean up old production deployments (keep more for production)
             sh """
-                echo "Cleaning up old PRODUCTION deployments"
                 kubectl get replicaset -n ${NAMESPACE} -o name | grep ${SERVICE_NAME} | sort -r | tail -n +5 | xargs -r kubectl delete -n ${NAMESPACE} > /dev/null 2>&1 || true
             """
         }
