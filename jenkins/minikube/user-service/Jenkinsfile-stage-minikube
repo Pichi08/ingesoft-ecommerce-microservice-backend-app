@@ -4,7 +4,6 @@ pipeline {
     // Use configured tools from Global Tools
     tools {
         maven 'Maven-3.9'
-        jdk 'Java-11'
     }
     
     // Only run on develop branch
@@ -15,18 +14,29 @@ pipeline {
     environment {
         SERVICE_NAME = 'user-service'
         MAVEN_OPTS = '-Xmx512m'
-        JAVA_HOME = '/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home'
-        PATH = "${JAVA_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
     }
     
     stages {
-        stage('Checkout') {
+        stage('Setup Environment') {
             steps {
+                script {
+                    // Set up Java environment once and store for reuse
+                    env.JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
+                    env.MAVEN_HOME = "${env.HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
+                    env.PATH = "${env.JAVA_HOME}/bin:${env.MAVEN_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
+                }
+                
                 echo "Starting staging build for ${SERVICE_NAME}"
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "Build: ${env.BUILD_NUMBER}"
                 echo "Target: Build and test only - no deployment"
-                
+                echo "Java Home: ${env.JAVA_HOME}"
+                echo "Maven Home: ${env.MAVEN_HOME}"
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
                 // Clean workspace
                 cleanWs()
                 
@@ -36,9 +46,6 @@ pipeline {
                 // Verify environment
                 sh '''
                     echo "=== Environment Verification ==="
-                    export JAVA_HOME="/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home"
-                    export PATH="$JAVA_HOME/bin:$PATH"
-                    
                     java -version 2>&1 | head -1
                     mvn -version 2>&1 | head -1
                     docker --version
@@ -76,6 +83,11 @@ pipeline {
                     
                     sh '''
                         echo "=== Building Application ==="
+                        echo "Using Java: $(java -version 2>&1 | head -1)"
+                        echo "Using Maven: $(mvn -version 2>&1 | head -1)"
+                        echo "Java Home: $JAVA_HOME"
+                        echo "Maven location: $(which mvn)"
+                        
                         mvn clean compile -q
                         echo "Application compiled successfully"
                     '''
