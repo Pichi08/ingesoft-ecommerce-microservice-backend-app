@@ -22,13 +22,30 @@ pipeline {
                 checkout scm
                 
                 script {
-                    // Check if this is main or develop branch - if so, skip this pipeline
-                    def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
-                    echo "Git log: ${gitLog}"
+                    // Detect branch from git log after checkout
+                    def branchName = env.BRANCH_NAME
                     
-                    if (gitLog.contains('origin/develop') || gitLog.contains('origin/main')) {
+                    if (!branchName || branchName == 'null') {
+                        // Get branch from git log decorations
+                        def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
+                        
+                        // Extract branch from origin/branch-name pattern
+                        if (gitLog.contains('origin/develop')) {
+                            branchName = 'develop'
+                        } else if (gitLog.contains('origin/main')) {
+                            branchName = 'main'
+                        } else {
+                            branchName = 'feature-branch'
+                        }
+                    }
+                    
+                    env.DETECTED_BRANCH = branchName
+                    echo "Final detected branch: ${env.DETECTED_BRANCH}"
+                    
+                    // Check if this is NOT a feature branch (i.e., it's main or develop)
+                    if (env.DETECTED_BRANCH == 'develop' || env.DETECTED_BRANCH == 'main') {
                         currentBuild.result = 'NOT_BUILT'
-                        error("Development pipeline only runs on feature branches. Detected main/develop branch.")
+                        error("Development pipeline only runs on feature branches. Current branch: ${env.DETECTED_BRANCH}")
                     }
                     
                     echo "Branch validation passed - proceeding with feature branch build"
