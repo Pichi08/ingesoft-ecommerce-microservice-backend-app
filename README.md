@@ -1,6 +1,6 @@
 # e-Commerce-boot μServices 
 
-## Important Note: This project's new milestone is to move The whole system to work on Kubernetes, so stay tuned
+## Important Note: This project's new milestone is to move The whole system to work on Kubernetes, so stay tuned.
 
 <!--## Better Code Hub
 I analysed this repository according to the clean code standards on [Better Code Hub](https://bettercodehub.com/) just to get an independent opinion of how bad the code is. Surprisingly, the compliance score is high!
