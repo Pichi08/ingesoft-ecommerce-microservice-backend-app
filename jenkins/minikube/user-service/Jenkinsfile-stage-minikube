@@ -20,41 +20,66 @@ pipeline {
     }
     
     stages {
-        stage('Determine Branch') {
+        stage('Checkout & Branch Detection') {
             steps {
+                echo "Starting staging build for ${SERVICE_NAME}"
+                cleanWs()
+                checkout scm
+                
                 script {
-                    // Get branch name from webhook or SCM
+                    // Detect branch after checkout using multiple strategies
                     def branchName = env.BRANCH_NAME
                     
                     if (!branchName || branchName == 'null') {
-                        // Try to get branch from git
+                        // Strategy 1: Check git log for branch info
                         try {
-                            branchName = sh(
-                                script: "git rev-parse --abbrev-ref HEAD",
+                            def gitLog = sh(
+                                script: "git log --oneline --decorate -1",
                                 returnStdout: true
                             ).trim()
+                            echo "Git log: ${gitLog}"
+                            
+                            // Extract branch from origin/branch-name pattern
+                            if (gitLog.contains('origin/develop')) {
+                                branchName = 'develop'
+                            } else if (gitLog.contains('origin/main')) {
+                                branchName = 'main'
+                            }
                         } catch (Exception e) {
-                            branchName = "unknown"
+                            echo "Git log strategy failed: ${e.message}"
                         }
                     }
                     
+                    if (!branchName || branchName == 'null') {
+                        // Strategy 2: Check which remote branch we're tracking
+                        try {
+                            def remoteBranch = sh(
+                                script: "git branch -r --contains HEAD | head -1 | sed 's/.*origin\\///g' | tr -d ' '",
+                                returnStdout: true
+                            ).trim()
+                            echo "Remote branch: ${remoteBranch}"
+                            branchName = remoteBranch
+                        } catch (Exception e) {
+                            echo "Remote branch strategy failed: ${e.message}"
+                        }
+                    }
+                    
+                    if (!branchName || branchName == 'null') {
+                        // Strategy 3: Use GIT_BRANCH environment variable if available
+                        branchName = env.GIT_BRANCH?.replaceAll('origin/', '') ?: 'unknown'
+                    }
+                    
                     env.DETECTED_BRANCH = branchName
-                    echo "Detected branch: ${env.DETECTED_BRANCH}"
+                    echo "Final detected branch: ${env.DETECTED_BRANCH}"
                     
                     // Check if this is develop branch
                     if (env.DETECTED_BRANCH != 'develop') {
                         currentBuild.result = 'NOT_BUILT'
                         error("Pipeline only runs on 'develop' branch. Current branch: ${env.DETECTED_BRANCH}")
                     }
+                    
+                    echo "✅ Branch validation passed - proceeding with develop branch build"
                 }
-            }
-        }
-        
-        stage('Checkout') {
-            steps {
-                echo "Starting staging build for ${SERVICE_NAME}"
-                cleanWs()
-                checkout scm
                 
                 // Verify environment
                 sh '''
