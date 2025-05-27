@@ -38,11 +38,26 @@ pipeline {
                     mvn -version 2>&1 | head -1
                     docker --version
                     
-                    # Check Minikube status (for Docker daemon)
-                    minikube status || exit 1
+                    # Check Minikube installation
+                    minikube version || exit 1
+                    
+                    # Check if minikube is running
+                    echo "Checking minikube status..."
+                    if minikube status >/dev/null 2>&1; then
+                        echo "✓ Minikube is running"
+                    else
+                        echo "Starting minikube..."
+                        minikube start --driver=docker --container-runtime=docker --memory=4096 --cpus=2
+                    fi
                     
                     # Configure Docker to use Minikube's daemon
                     eval $(minikube docker-env)
+                    
+                    # Test Docker connectivity
+                    docker ps >/dev/null && echo "✓ Minikube Docker daemon accessible" || echo "✗ Docker daemon not accessible"
+                    
+                    # Test kubectl connectivity
+                    kubectl cluster-info | head -1 && echo "✓ Kubectl connected to Minikube" || echo "✗ Kubectl connection failed"
                     
                     echo "Environment verification completed"
                 '''
@@ -146,7 +161,7 @@ pipeline {
                         # Verify image was built
                         docker images | grep ${SERVICE_NAME}
                         
-                        echo "Docker image built successfully"
+                        echo "Docker image built successfully in Minikube"
                     """
                     
                     // Store image tag for reference
@@ -171,12 +186,13 @@ pipeline {
             echo "Build Summary:"
             echo "- Unit tests: PASSED"
             echo "- Integration tests: PASSED"
-            echo "- Code quality checks: COMPLETED"
-            echo "- Security scans: COMPLETED"
             echo "- Docker image: BUILT"
             echo ""
             echo "Image is ready for production deployment"
             echo "Use the production pipeline to deploy this image"
+            echo ""
+            echo "Note: Image was built using Minikube Docker daemon"
+            echo "Image is available in Minikube for deployment"
         }
         
         failure {
