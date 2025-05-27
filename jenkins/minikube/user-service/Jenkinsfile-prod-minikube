@@ -17,39 +17,46 @@ pipeline {
         PATH = "${JAVA_HOME}/bin:${MAVEN_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
     }
 
-    // Add restriction to only run on main branch
+    // GitHub webhook trigger for main branch
     triggers {
         githubPush()
     }
 
     stages {
-        stage('Branch Check') {
-            when {
-                not { branch 'main' }
-            }
-            steps {
-                script {
-                    currentBuild.result = 'NOT_BUILT'
-                    error("Production pipeline only runs on 'main' branch. Current branch: ${env.BRANCH_NAME}")
-                }
-            }
-        }
-        stage('Checkout') {
-            when {
-                branch 'main'
-            }
+        stage('Checkout & Branch Detection') {
             steps {
                 echo "Starting PRODUCTION build for ${SERVICE_NAME}"
-                echo "Branch: ${env.BRANCH_NAME}"
-                echo "Build: ${env.BUILD_NUMBER}"
-                echo "Target: Minikube PRODUCTION environment"
                 echo "WARNING: This will deploy to PRODUCTION"
-                
-                // Clean workspace
                 cleanWs()
-                
-                // Checkout source code
                 checkout scm
+                
+                script {
+                    // Detect branch from git log after checkout
+                    def branchName = env.BRANCH_NAME
+                    
+                    if (!branchName || branchName == 'null') {
+                        // Get branch from git log decorations
+                        def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
+                        
+                        // Extract branch from origin/branch-name pattern
+                        if (gitLog.contains('origin/main')) {
+                            branchName = 'main'
+                        } else {
+                            branchName = 'unknown'
+                        }
+                    }
+                    
+                    env.DETECTED_BRANCH = branchName
+                    echo "Final detected branch: ${env.DETECTED_BRANCH}"
+                    
+                    // Check if this is main branch
+                    if (env.DETECTED_BRANCH != 'main') {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("Production pipeline only runs on 'main' branch. Current branch: ${env.DETECTED_BRANCH}")
+                    }
+                    
+                    echo "Branch validation passed - proceeding with production build"
+                }
                 
                 // Verify environment
                 sh '''
@@ -72,9 +79,6 @@ pipeline {
         }
         
         stage('Build Application') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     echo "Building ${SERVICE_NAME} for PRODUCTION"
@@ -84,9 +88,6 @@ pipeline {
         }
         
         stage('Unit Tests') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn test -q'
@@ -102,9 +103,6 @@ pipeline {
         }
         
         stage('Integration Tests') {
-            when {
-                branch 'main'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn verify -Dspring.profiles.active=test -q'

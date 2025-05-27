@@ -20,26 +20,39 @@ pipeline {
     }
     
     stages {
-        stage('Branch Check') {
-            when {
-                not { branch 'develop' }
-            }
-            steps {
-                script {
-                    currentBuild.result = 'NOT_BUILT'
-                    error("Pipeline only runs on 'develop' branch. Current branch: ${env.BRANCH_NAME}")
-                }
-            }
-        }
-        
-        stage('Checkout') {
-            when {
-                branch 'develop'
-            }
+        stage('Checkout & Branch Detection') {
             steps {
                 echo "Starting staging build for ${SERVICE_NAME}"
                 cleanWs()
                 checkout scm
+                
+                script {
+                    // Detect branch from git log after checkout
+                    def branchName = env.BRANCH_NAME
+                    
+                    if (!branchName || branchName == 'null') {
+                        // Get branch from git log decorations
+                        def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
+                        
+                        // Extract branch from origin/branch-name pattern
+                        if (gitLog.contains('origin/develop')) {
+                            branchName = 'develop'
+                        } else {
+                            branchName = 'unknown'
+                        }
+                    }
+                    
+                    env.DETECTED_BRANCH = branchName
+                    echo "Final detected branch: ${env.DETECTED_BRANCH}"
+                    
+                    // Check if this is develop branch
+                    if (env.DETECTED_BRANCH != 'develop') {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("Pipeline only runs on 'develop' branch. Current branch: ${env.DETECTED_BRANCH}")
+                    }
+                    
+                    echo "Branch validation passed - proceeding with develop branch build"
+                }
                 
                 // Verify environment
                 sh '''
@@ -61,9 +74,6 @@ pipeline {
         }
         
         stage('Build & Test') {
-            when {
-                branch 'develop'
-            }
             parallel {
                 stage('Build Application') {
                     steps {
@@ -90,9 +100,6 @@ pipeline {
         }
         
         stage('Integration Tests') {
-            when {
-                branch 'develop'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn verify -Dspring.profiles.active=test -q'
@@ -107,9 +114,6 @@ pipeline {
         }
         
         stage('Package & Build Image') {
-            when {
-                branch 'develop'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     script {

@@ -15,27 +15,39 @@ pipeline {
     }
     
     stages {
-        stage('Checkout') {
-            // Run on all branches except main and develop
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
-                    }
-                }
-            }
+        stage('Checkout & Branch Detection') {
             steps {
                 echo "Starting development build for ${SERVICE_NAME}"
-                echo "Branch: ${env.BRANCH_NAME}"
-                echo "Build: ${env.BUILD_NUMBER}"
-                echo "Target: Development validation only (Minikube)"
-                
-                // Clean workspace
                 cleanWs()
-                
-                // Checkout source code
                 checkout scm
+                
+                script {
+                    // Detect branch from git log after checkout
+                    def branchName = env.BRANCH_NAME
+                    
+                    if (!branchName || branchName == 'null') {
+                        // Get branch from git log decorations
+                        def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
+                        
+                        // Extract branch from origin/branch-name pattern
+                        if (gitLog.contains('origin/develop')) {
+                            branchName = 'develop'
+                        } else(gitLog.contains('origin/main')) {
+                            branchName = 'main'
+                        } 
+                    }
+                    
+                    env.DETECTED_BRANCH = branchName
+                    echo "Final detected branch: ${env.DETECTED_BRANCH}"
+                    
+                    // Check if this is a feature branch (not main or develop)
+                    if (env.DETECTED_BRANCH == 'main' || env.DETECTED_BRANCH == 'develop') {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("Development pipeline only runs on feature branches. Current branch: ${env.DETECTED_BRANCH}")
+                    }
+                    
+                    echo "Branch validation passed - proceeding with feature branch build"
+                }
                 
                 // Verify tools are available
                 sh '''
@@ -48,14 +60,6 @@ pipeline {
         }
         
         stage('Build Application') {
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
-                    }
-                }
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn clean compile -q'
@@ -64,14 +68,6 @@ pipeline {
         }
         
         stage('Unit Tests') {
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
-                    }
-                }
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn test -q'
@@ -87,14 +83,6 @@ pipeline {
         }
         
         stage('Package Application') {
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
-                    }
-                }
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn package -DskipTests -q'
@@ -110,12 +98,12 @@ pipeline {
         
         success {
             echo """
-DEVELOPMENT BUILD SUCCESS
-Build Summary:
-- Unit tests: PASSED
-- Package validation: PASSED
+                DEVELOPMENT BUILD SUCCESS
+                Build Summary:
+                - Unit tests: PASSED
+                - Package validation: PASSED
 
-Ready for merge to develop branch.
+                Ready for merge to develop branch.
             """
         }
         
