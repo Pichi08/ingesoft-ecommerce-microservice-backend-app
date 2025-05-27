@@ -20,22 +20,37 @@ pipeline {
     }
     
     stages {
-        stage('Branch Check') {
-            when {
-                not { branch 'develop' }
-            }
+        stage('Determine Branch') {
             steps {
                 script {
-                    currentBuild.result = 'NOT_BUILT'
-                    error("Pipeline only runs on 'develop' branch. Current branch: ${env.BRANCH_NAME}")
+                    // Get branch name from webhook or SCM
+                    def branchName = env.BRANCH_NAME
+                    
+                    if (!branchName || branchName == 'null') {
+                        // Try to get branch from git
+                        try {
+                            branchName = sh(
+                                script: "git rev-parse --abbrev-ref HEAD",
+                                returnStdout: true
+                            ).trim()
+                        } catch (Exception e) {
+                            branchName = "unknown"
+                        }
+                    }
+                    
+                    env.DETECTED_BRANCH = branchName
+                    echo "Detected branch: ${env.DETECTED_BRANCH}"
+                    
+                    // Check if this is develop branch
+                    if (env.DETECTED_BRANCH != 'develop') {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("Pipeline only runs on 'develop' branch. Current branch: ${env.DETECTED_BRANCH}")
+                    }
                 }
             }
         }
         
         stage('Checkout') {
-            when {
-                branch 'develop'
-            }
             steps {
                 echo "Starting staging build for ${SERVICE_NAME}"
                 cleanWs()
@@ -61,9 +76,6 @@ pipeline {
         }
         
         stage('Build & Test') {
-            when {
-                branch 'develop'
-            }
             parallel {
                 stage('Build Application') {
                     steps {
@@ -90,9 +102,6 @@ pipeline {
         }
         
         stage('Integration Tests') {
-            when {
-                branch 'develop'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn verify -Dspring.profiles.active=test -q'
@@ -107,9 +116,6 @@ pipeline {
         }
         
         stage('Package & Build Image') {
-            when {
-                branch 'develop'
-            }
             steps {
                 dir(SERVICE_NAME) {
                     script {
