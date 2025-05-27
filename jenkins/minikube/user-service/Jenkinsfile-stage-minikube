@@ -6,10 +6,10 @@ pipeline {
         maven 'Maven-3.9'
     }
     
-    // Only run on develop branch
-    // when {
-    //     branch 'develop'
-    // }
+    // GitHub webhook trigger
+    triggers {
+        githubPush()
+    }
     
     environment {
         SERVICE_NAME = 'user-service'
@@ -20,7 +20,22 @@ pipeline {
     }
     
     stages {
+        stage('Branch Check') {
+            when {
+                not { branch 'develop' }
+            }
+            steps {
+                script {
+                    currentBuild.result = 'NOT_BUILT'
+                    error("Pipeline only runs on 'develop' branch. Current branch: ${env.BRANCH_NAME}")
+                }
+            }
+        }
+        
         stage('Checkout') {
+            when {
+                branch 'develop'
+            }
             steps {
                 echo "Starting staging build for ${SERVICE_NAME}"
                 cleanWs()
@@ -46,6 +61,9 @@ pipeline {
         }
         
         stage('Build & Test') {
+            when {
+                branch 'develop'
+            }
             parallel {
                 stage('Build Application') {
                     steps {
@@ -72,6 +90,9 @@ pipeline {
         }
         
         stage('Integration Tests') {
+            when {
+                branch 'develop'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     sh 'mvn verify -Dspring.profiles.active=test -q'
@@ -86,6 +107,9 @@ pipeline {
         }
         
         stage('Package & Build Image') {
+            when {
+                branch 'develop'
+            }
             steps {
                 dir(SERVICE_NAME) {
                     script {
