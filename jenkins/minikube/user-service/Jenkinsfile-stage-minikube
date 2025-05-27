@@ -15,6 +15,8 @@ pipeline {
     environment {
         SERVICE_NAME = 'user-service'
         MAVEN_OPTS = '-Xmx512m'
+        JAVA_HOME = '/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home'
+        PATH = "${JAVA_HOME}/bin:/opt/homebrew/bin:/usr/local/bin:${env.PATH}"
     }
     
     stages {
