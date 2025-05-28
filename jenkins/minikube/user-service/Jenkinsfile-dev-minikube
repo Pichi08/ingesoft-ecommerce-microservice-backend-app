@@ -22,43 +22,33 @@ pipeline {
                 checkout scm
                 
                 script {
-                    echo "=== BRANCH DETECTION START ==="
-                    
                     // Detect branch from git log after checkout
                     def branchName = env.BRANCH_NAME
-                    echo "env.BRANCH_NAME: ${branchName}"
                     
                     if (!branchName || branchName == 'null') {
-                        echo "Branch name is null, using git log detection..."
                         // Get branch from git log decorations
                         def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
-                        echo "Git log output: ${gitLog}"
                         
                         // Extract branch from origin/branch-name pattern
                         if (gitLog.contains('origin/develop')) {
                             branchName = 'develop'
-                            echo "Detected as develop branch"
                         } else if (gitLog.contains('origin/main')) {
                             branchName = 'main'
-                            echo "Detected as main branch"
                         } else {
                             branchName = 'feature-branch'
-                            echo "Detected as feature branch"
                         }
                     }
                     
                     env.DETECTED_BRANCH = branchName
-                    echo "Final detected branch: ${env.DETECTED_BRANCH}"
+                    echo "Detected branch: ${env.DETECTED_BRANCH}"
                     
                     // Check if this is NOT a feature branch (i.e., it's main or develop)
                     if (env.DETECTED_BRANCH == 'develop' || env.DETECTED_BRANCH == 'main') {
-                        echo "❌ STOPPING: This is ${env.DETECTED_BRANCH} branch"
                         currentBuild.result = 'NOT_BUILT'
                         error("Development pipeline only runs on feature branches. Current branch: ${env.DETECTED_BRANCH}")
                     }
                     
-                    echo "✅ Branch validation passed - proceeding with feature branch build"
-                    echo "=== BRANCH DETECTION END ==="
+                    echo "Branch validation passed - proceeding with feature branch build"
                 }
                 
                 // Verify tools are available
