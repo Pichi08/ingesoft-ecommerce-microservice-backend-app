@@ -7,7 +7,7 @@ pipeline {
     }
     
     environment {
-        SERVICES = 'user-service,payment-service,product-service'
+        SERVICES = 'user-service,favourite-service,product-service'
         MAVEN_OPTS = '-Xmx512m'  // Reduced for local development
         JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
         MAVEN_HOME = "${HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
@@ -184,7 +184,7 @@ pipeline {
                 Services Built: ${SERVICES}
                 Build Summary:
                 - User Service: PASSED
-                - Payment Service: PASSED
+                - Favourite Service: PASSED
                 - Product Service: PASSED
                 - All unit tests: PASSED
                 - All packages: BUILT
