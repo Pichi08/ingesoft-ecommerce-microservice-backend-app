@@ -1,4 +1,4 @@
-package com.selimhorri.app.repository;
+package com.selimhorri.app.unit.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import com.selimhorri.app.domain.Credential;
 import com.selimhorri.app.domain.RoleBasedAuthority;
 import com.selimhorri.app.domain.User;
+import com.selimhorri.app.repository.UserRepository;
 
 
 @DataJpaTest

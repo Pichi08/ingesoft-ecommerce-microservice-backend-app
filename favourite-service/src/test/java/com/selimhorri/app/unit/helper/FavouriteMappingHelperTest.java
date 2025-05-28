@@ -1,4 +1,4 @@
-package com.selimhorri.app.helper;
+package com.selimhorri.app.unit.helper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +14,7 @@ import com.selimhorri.app.domain.Favourite;
 import com.selimhorri.app.dto.FavouriteDto;
 import com.selimhorri.app.dto.ProductDto;
 import com.selimhorri.app.dto.UserDto;
+import com.selimhorri.app.helper.FavouriteMappingHelper;
 
 class FavouriteMappingHelperTest {
 

@@ -1,4 +1,4 @@
-package com.selimhorri.app.service.impl;
+package com.selimhorri.app.unit.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,6 +27,7 @@ import com.selimhorri.app.dto.ProductDto;
 import com.selimhorri.app.dto.UserDto;
 import com.selimhorri.app.exception.wrapper.FavouriteNotFoundException;
 import com.selimhorri.app.repository.FavouriteRepository;
+import com.selimhorri.app.service.impl.FavouriteServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
 class FavouriteServiceImplTest {

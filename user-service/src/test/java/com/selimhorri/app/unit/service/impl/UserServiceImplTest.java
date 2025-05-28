@@ -1,4 +1,4 @@
-package com.selimhorri.app.service.impl;
+package com.selimhorri.app.unit.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,6 +22,7 @@ import com.selimhorri.app.dto.CredentialDto;
 import com.selimhorri.app.dto.UserDto;
 import com.selimhorri.app.exception.wrapper.UserObjectNotFoundException;
 import com.selimhorri.app.repository.UserRepository;
+import com.selimhorri.app.service.impl.UserServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceImplTest {

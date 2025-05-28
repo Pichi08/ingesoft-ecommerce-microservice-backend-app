@@ -1,4 +1,4 @@
-package com.selimhorri.app.helper;
+package com.selimhorri.app.unit.helper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,6 +10,7 @@ import com.selimhorri.app.domain.Category;
 import com.selimhorri.app.domain.Product;
 import com.selimhorri.app.dto.CategoryDto;
 import com.selimhorri.app.dto.ProductDto;
+import com.selimhorri.app.helper.ProductMappingHelper;
 
 class ProductMappingHelperTest {
 

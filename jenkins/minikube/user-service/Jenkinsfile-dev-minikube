@@ -98,7 +98,7 @@ pipeline {
                     steps {
                         dir('user-service') {
                             echo "Testing user-service..."
-                            sh 'mvn test -q'
+                            sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
                         }
                     }
                     post {
@@ -113,12 +113,12 @@ pipeline {
                     steps {
                         dir('favourite-service') {
                             echo "Testing favourite-service..."
-                            sh 'mvn test -q'
+                            sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
                         }
                     }
                     post {
                         always {
-                            junit testResults: "payment-service/target/surefire-reports/TEST-*.xml",
+                            junit testResults: "favourite-service/target/surefire-reports/TEST-*.xml",
                                   allowEmptyResults: true
                         }
                     }
@@ -128,7 +128,7 @@ pipeline {
                     steps {
                         dir('product-service') {
                             echo "Testing product-service..."
-                            sh 'mvn test -q'
+                            sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
                         }
                     }
                     post {
