@@ -72,10 +72,10 @@ pipeline {
                     }
                 }
                 
-                stage('Build Payment Service') {
+                stage('Build favourite Service') {
                     steps {
-                        dir('payment-service') {
-                            echo "Building payment-service..."
+                        dir('favourite-service') {
+                            echo "Building favourite-service..."
                             sh 'mvn clean compile -q'
                         }
                     }
@@ -109,10 +109,10 @@ pipeline {
                     }
                 }
                 
-                stage('Test Payment Service') {
+                stage('Test Favourite Service') {
                     steps {
-                        dir('payment-service') {
-                            echo "Testing payment-service..."
+                        dir('favourite-service') {
+                            echo "Testing favourite-service..."
                             sh 'mvn test -q'
                         }
                     }
@@ -152,10 +152,10 @@ pipeline {
                     }
                 }
                 
-                stage('Package Payment Service') {
+                stage('Package Favourite Service') {
                     steps {
-                        dir('payment-service') {
-                            echo "Packaging payment-service..."
+                        dir('favourite-service') {
+                            echo "Packaging favourite-service..."
                             sh 'mvn package -DskipTests -q'
                         }
                     }
