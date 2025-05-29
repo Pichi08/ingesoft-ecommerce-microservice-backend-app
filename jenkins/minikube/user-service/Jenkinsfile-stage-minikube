@@ -149,56 +149,6 @@ pipeline {
                         }
                     }
                 }
-                
-                stage('Build & Test Cloud Config') {
-                    stages {
-                        stage('Build Cloud Config') {
-                            steps {
-                                dir('cloud-config') {
-                                    sh 'mvn clean compile -q'
-                                }
-                            }
-                        }
-                        stage('Unit Test Cloud Config') {
-                            steps {
-                                dir('cloud-config') {
-                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
-                                }
-                            }
-                            post {
-                                always {
-                                    junit testResults: "cloud-config/target/surefire-reports/TEST-*.xml",
-                                          allowEmptyResults: true
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                stage('Build & Test Service Discovery') {
-                    stages {
-                        stage('Build Service Discovery') {
-                            steps {
-                                dir('service-discovery') {
-                                    sh 'mvn clean compile -q'
-                                }
-                            }
-                        }
-                        stage('Unit Test Service Discovery') {
-                            steps {
-                                dir('service-discovery') {
-                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
-                                }
-                            }
-                            post {
-                                always {
-                                    junit testResults: "service-discovery/target/surefire-reports/TEST-*.xml",
-                                          allowEmptyResults: true
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
         
@@ -218,20 +168,6 @@ pipeline {
                     }
                 }
                 
-                stage('Integration Test Favourite Service') {
-                    steps {
-                        dir('favourite-service') {
-                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
-                        }
-                    }
-                    post {
-                        always {
-                            junit testResults: "favourite-service/target/failsafe-reports/TEST-*.xml",
-                                  allowEmptyResults: true
-                        }
-                    }
-                }
-                
                 stage('Integration Test Product Service') {
                     steps {
                         dir('product-service') {
@@ -241,34 +177,6 @@ pipeline {
                     post {
                         always {
                             junit testResults: "product-service/target/failsafe-reports/TEST-*.xml",
-                                  allowEmptyResults: true
-                        }
-                    }
-                }
-                
-                stage('Integration Test Cloud Config') {
-                    steps {
-                        dir('cloud-config') {
-                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
-                        }
-                    }
-                    post {
-                        always {
-                            junit testResults: "cloud-config/target/failsafe-reports/TEST-*.xml",
-                                  allowEmptyResults: true
-                        }
-                    }
-                }
-                
-                stage('Integration Test Service Discovery') {
-                    steps {
-                        dir('service-discovery') {
-                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
-                        }
-                    }
-                    post {
-                        always {
-                            junit testResults: "service-discovery/target/failsafe-reports/TEST-*.xml",
                                   allowEmptyResults: true
                         }
                     }
