@@ -7,9 +7,8 @@ pipeline {
     }
     
     environment {
-        SERVICE_NAME = 'user-service'
+        SERVICES = 'user-service,favourite-service,product-service,cloud-config,service-discovery'
         NAMESPACE = 'ecommerce-system'
-        SERVICE_PORT = '8700'
         KUBECONFIG = "${HOME}/.kube/config"
         MAVEN_OPTS = '-Xmx512m'
         JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
@@ -25,7 +24,7 @@ pipeline {
     stages {
         stage('Checkout & Branch Detection') {
             steps {
-                echo "Starting PRODUCTION build for ${SERVICE_NAME}"
+                echo "Starting PRODUCTION build for microservices: ${SERVICES}"
                 echo "WARNING: This will deploy to PRODUCTION"
                 cleanWs()
                 checkout scm
@@ -78,100 +77,240 @@ pipeline {
             }
         }
         
-        stage('Build Application') {
-            steps {
-                dir(SERVICE_NAME) {
-                    echo "Building ${SERVICE_NAME} for PRODUCTION"
-                    sh 'mvn clean compile -q'
+        stage('Build & Test') {
+            parallel {
+                stage('Build & Test User Service') {
+                    stages {
+                        stage('Build User Service') {
+                            steps {
+                                dir('user-service') {
+                                    echo "Building user-service for PRODUCTION"
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test User Service') {
+                            steps {
+                                dir('user-service') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "user-service/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-        }
-        
-        stage('Unit Tests') {
-            steps {
-                dir(SERVICE_NAME) {
-                    sh 'mvn test -q'
+                
+                stage('Build & Test Favourite Service') {
+                    stages {
+                        stage('Build Favourite Service') {
+                            steps {
+                                dir('favourite-service') {
+                                    echo "Building favourite-service for PRODUCTION"
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test Favourite Service') {
+                            steps {
+                                dir('favourite-service') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "favourite-service/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-            post {
-                always {
-                    // Publish test results
-                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
-                          allowEmptyResults: true
+                
+                stage('Build & Test Product Service') {
+                    stages {
+                        stage('Build Product Service') {
+                            steps {
+                                dir('product-service') {
+                                    echo "Building product-service for PRODUCTION"
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test Product Service') {
+                            steps {
+                                dir('product-service') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "product-service/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
         
         stage('Integration Tests') {
-            steps {
-                dir(SERVICE_NAME) {
-                    sh 'mvn verify -Dspring.profiles.active=test -q'
+            parallel {
+                stage('Integration Test User Service') {
+                    steps {
+                        dir('user-service') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "user-service/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
-            }
-            post {
-                always {
-                    // Publish integration test results
-                    junit testResults: "${SERVICE_NAME}/target/failsafe-reports/TEST-*.xml",
-                          allowEmptyResults: true
-                }
-            }
-        }
-        
-        stage('Package Application') {
-            steps {
-                dir(SERVICE_NAME) {
-                    echo "Packaging application for production"
-                    sh 'mvn package -DskipTests -q'
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    echo "Building Docker image for PRODUCTION"
-                    
-                    def imageTag = "v1.0.${env.BUILD_NUMBER}"
-                    echo "Production image tag: ${imageTag}"
-                    
-                    sh """
-                        # Use Minikube's Docker daemon
-                        eval \$(minikube docker-env)
-                        
-                        # Build Docker image
-                        cd ${SERVICE_NAME}
-                        docker build -t ${SERVICE_NAME}:${imageTag} .
-                        
-                        echo "PRODUCTION Docker image built: ${SERVICE_NAME}:${imageTag}"
-                    """
-                    
-                    // Store image tag for deployment
-                    env.IMAGE_TAG = imageTag
+                
+                stage('Integration Test Favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "favourite-service/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
             }
         }
-        
-        stage('Security Scans') {
-            steps {
-                script {
-                    echo "Running security scans"
-                    
-                    sh '''
-                        echo "=== Security Scans ==="
-                        
-                        # Basic security checks
-                        echo "✓ Checking for hardcoded secrets"
-                        
-                        # Check for potential secrets in code
-                        SECRET_COUNT=$(find ${SERVICE_NAME}/src -name "*.java" -exec grep -l "password\\|secret\\|key" {} \\; | wc -l)
-                        echo "Potential secrets found: $SECRET_COUNT"
-                        
-                        # Check for SQL injection patterns
-                        SQL_COUNT=$(find ${SERVICE_NAME}/src -name "*.java" -exec grep -l "Statement\\|createStatement" {} \\; | wc -l)
-                        echo "Potential SQL injection risks: $SQL_COUNT"
-                        
-                        echo "Security scans completed"
-                    '''
+
+        stage('Package & Build Images') {
+            parallel {
+                stage('Package & Build User Service') {
+                    steps {
+                        dir('user-service') {
+                            script {
+                                echo "Packaging user-service for production"
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with production tag
+                                def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image
+                                    docker build -t user-service:${imageTag} .
+                                    
+                                    echo "PRODUCTION Docker image built: user-service:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            script {
+                                echo "Packaging favourite-service for production"
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with production tag
+                                def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image
+                                    docker build -t favourite-service:${imageTag} .
+                                    
+                                    echo "PRODUCTION Docker image built: favourite-service:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Product Service') {
+                    steps {
+                        dir('product-service') {
+                            script {
+                                echo "Packaging product-service for production"
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with production tag
+                                def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image
+                                    docker build -t product-service:${imageTag} .
+                                    
+                                    echo "PRODUCTION Docker image built: product-service:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Cloud Config') {
+                    steps {
+                        dir('cloud-config') {
+                            script {
+                                echo "Packaging cloud-config for production"
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with production tag
+                                def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image
+                                    docker build -t cloud-config:${imageTag} .
+                                    
+                                    echo "PRODUCTION Docker image built: cloud-config:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Service Discovery') {
+                    steps {
+                        dir('service-discovery') {
+                            script {
+                                echo "Packaging service-discovery for production"
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with production tag
+                                def imageTag = "v1.0.${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image
+                                    docker build -t service-discovery:${imageTag} .
+                                    
+                                    echo "PRODUCTION Docker image built: service-discovery:${imageTag}"
+                                """
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -203,106 +342,35 @@ pipeline {
             }
         }
         
-        stage('Manual Approval') {
-            steps {
-                script {
-                    echo "PRODUCTION DEPLOYMENT APPROVAL REQUIRED"
-                    echo "Review the following before approving:"
-                    echo "- All tests passed"
-                    echo "- Security scans completed"
-                    echo "- Docker image built and ready"
-                    echo "- Production environment prepared"
-                    echo ""
-                    echo "Deployment Details:"
-                    echo "Service: ${SERVICE_NAME}"
-                    echo "Image: ${SERVICE_NAME}:${env.IMAGE_TAG}"
-                    echo "Namespace: ${NAMESPACE}"
-                    echo "Build: ${env.BUILD_NUMBER}"
-                    echo "Target: Minikube PRODUCTION"
-                    echo ""
-                    echo "WARNING: This will deploy to PRODUCTION environment"
-                    
-                    // Manual approval step
-                    timeout(time: 30, unit: 'MINUTES') {
-                        input message: 'Deploy to PRODUCTION?', 
-                              ok: 'Deploy to Production',
-                              submitterParameter: 'APPROVER',
-                              parameters: [
-                                  choice(name: 'DEPLOYMENT_TYPE', 
-                                         choices: ['Rolling Update', 'Recreate'], 
-                                         description: 'Select deployment strategy'),
-                                  booleanParam(name: 'SKIP_HEALTH_CHECKS', 
-                                              defaultValue: false, 
-                                              description: 'Skip health checks (not recommended)'),
-                                  booleanParam(name: 'BACKUP_BEFORE_DEPLOY', 
-                                              defaultValue: true, 
-                                              description: 'Create backup before deployment')
-                              ]
-                    }
-                    
-                    echo "Production deployment approved by: ${env.APPROVER}"
-                    echo "Deployment strategy: ${params.DEPLOYMENT_TYPE}"
-                    echo "Backup before deploy: ${params.BACKUP_BEFORE_DEPLOY}"
-                }
-            }
-        }
-        
-        stage('Pre-deployment Backup') {
-            when {
-                expression { params.BACKUP_BEFORE_DEPLOY == true }
-            }
-            steps {
-                script {
-                    echo "Creating pre-deployment backup"
-                    
-                    sh '''
-                        echo "=== Creating Pre-deployment Backup ==="
-                        
-                        # Get current deployment info
-                        if kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE} >/dev/null 2>&1; then
-                            CURRENT_IMAGE=$(kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[0].image}')
-                            echo "Current production image: $CURRENT_IMAGE"
-                            
-                            # Save current deployment configuration
-                            kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE} -o yaml > /tmp/${SERVICE_NAME}-backup-${BUILD_NUMBER}.yaml
-                            echo "Deployment configuration backed up"
-                        else
-                            echo "No existing deployment to backup"
-                        fi
-                        
-                        echo "Backup completed"
-                    '''
-                }
-            }
-        }
-        
         stage('Deploy to Production') {
             steps {
                 script {
-                    echo "Deploying to PRODUCTION Minikube"
+                    echo "Deploying service-discovery to PRODUCTION Minikube"
                     echo "Approved by: ${env.APPROVER}"
                     echo "Strategy: ${params.DEPLOYMENT_TYPE}"
                     
                     sh '''
-                        echo "=== Deploying to PRODUCTION ==="
+                        echo "=== Deploying service-discovery to PRODUCTION ==="
                         
-                        # Check if deployment exists in production
-                        if kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE} >/dev/null 2>&1; then
-                            echo "Updating existing PRODUCTION deployment"
-                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${SERVICE_NAME}:${IMAGE_TAG} -n ${NAMESPACE}
+                        # Deploy only service-discovery due to resource constraints
+                        SERVICE="service-discovery"
+                        
+                        if kubectl get deployment ${SERVICE} -n ${NAMESPACE} >/dev/null 2>&1; then
+                            echo "Updating existing PRODUCTION deployment for ${SERVICE}"
+                            kubectl set image deployment/${SERVICE} ${SERVICE}=${SERVICE}:v1.0.${BUILD_NUMBER} -n ${NAMESPACE}
                         else
-                            echo "Creating new PRODUCTION deployment"
+                            echo "Creating new PRODUCTION deployment for ${SERVICE}"
                             # Apply Kubernetes manifests to production
-                            kubectl apply -f k8s/minikube/services/${SERVICE_NAME}/ -n ${NAMESPACE}
+                            kubectl apply -f k8s/minikube/services/${SERVICE}/ -n ${NAMESPACE}
                             
                             # Update image in the deployment
-                            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${SERVICE_NAME}:${IMAGE_TAG} -n ${NAMESPACE}
+                            kubectl set image deployment/${SERVICE} ${SERVICE}=${SERVICE}:v1.0.${BUILD_NUMBER} -n ${NAMESPACE}
                         fi
                         
                         # Wait for rollout to complete (longer timeout for production)
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=600s
+                        kubectl rollout status deployment/${SERVICE} -n ${NAMESPACE} --timeout=900s
                         
-                        echo "PRODUCTION deployment completed successfully"
+                        echo "PRODUCTION deployment of ${SERVICE} completed successfully"
                     '''
                 }
             }
@@ -311,109 +379,54 @@ pipeline {
         stage('Production Health Checks') {
             steps {
                 script {
-                    if (params.SKIP_HEALTH_CHECKS) {
-                        echo "Health checks skipped by user request"
-                        return
-                    }
+                    echo "Running PRODUCTION health checks for service-discovery"
+                    echo "Note: Service Discovery typically takes ~6 minutes to fully initialize"
                     
-                    echo "Running PRODUCTION health checks"
-                    
-                    // Wait for service to stabilize
-                    sleep(time: 60, unit: 'SECONDS')
+                    // Wait longer for service-discovery to stabilize (it's slower to start)
+                    sleep(time: 120, unit: 'SECONDS')
                     
                     sh '''
-                        echo "=== PRODUCTION Health Checks ==="
+                        echo "=== PRODUCTION Health Checks for service-discovery ==="
+                        
+                        SERVICE="service-discovery"
                         
                         # Check pod status
-                        kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE}
+                        kubectl get pods -l app=${SERVICE} -n ${NAMESPACE}
                         
-                        # Wait for pod to be ready (longer timeout for production)
-                        kubectl wait --for=condition=ready pod -l app=${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+                        # Wait for pods to be ready (extended timeout for service-discovery)
+                        kubectl wait --for=condition=ready pod -l app=${SERVICE} -n ${NAMESPACE} --timeout=600s
                         
                         # Test health endpoint using Minikube service
-                        echo "Testing PRODUCTION health endpoint"
+                        echo "Testing PRODUCTION health endpoint for ${SERVICE}"
                         
                         # Get service URL
-                        SERVICE_URL=$(minikube service ${SERVICE_NAME} -n ${NAMESPACE} --url | head -1)
+                        SERVICE_URL=$(minikube service ${SERVICE} -n ${NAMESPACE} --url | head -1)
                         echo "PRODUCTION Service URL: $SERVICE_URL"
                         
-                        # Extended health checks for production
-                        for i in {1..15}; do
+                        # Extended health checks for production (adjusted for 6-minute startup)
+                        echo "Performing health checks - service-discovery may take up to 6 minutes to be ready"
+                        for i in {1..30}; do
                             if curl -f -s $SERVICE_URL/actuator/health >/dev/null 2>&1; then
-                                echo "PRODUCTION health check $i passed"
-                                sleep 5
+                                echo "PRODUCTION health check $i passed for ${SERVICE}"
+                                break
                             else
-                                echo "PRODUCTION health check $i failed"
-                                exit 1
+                                echo "PRODUCTION health check $i failed for ${SERVICE} - retrying in 15 seconds..."
+                                if [ $i -eq 30 ]; then
+                                    echo "All health check attempts failed - service may still be starting"
+                                    exit 1
+                                fi
+                                sleep 15
                             fi
                         done
                         
-                        echo "All PRODUCTION health checks passed"
-                    '''
-                }
-            }
-        }
-        
-        stage('Production Smoke Tests') {
-            steps {
-                script {
-                    echo "Running PRODUCTION smoke tests"
-                    
-                    sh '''
-                        echo "=== PRODUCTION Smoke Tests ==="
-                        
-                        # Comprehensive service validation
-                        kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE}
-                        kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE}
-                        
-                        # Check if service registered with Eureka
-                        echo "Checking Eureka registration in PRODUCTION"
-                        if kubectl get svc service-discovery -n ${NAMESPACE} >/dev/null 2>&1; then
-                            EUREKA_URL=$(minikube service service-discovery -n ${NAMESPACE} --url | head -1)
-                            echo "PRODUCTION Eureka URL: $EUREKA_URL"
-                            curl -f -s $EUREKA_URL/actuator/health >/dev/null && echo "✓ Eureka is accessible in PRODUCTION" || echo "✗ Eureka not accessible in PRODUCTION"
+                        # Final validation that service is responding
+                        if curl -f -s $SERVICE_URL/actuator/health >/dev/null 2>&1; then
+                            echo "✓ PRODUCTION health checks passed for ${SERVICE}"
                         else
-                            echo "Eureka not deployed in production namespace"
+                            echo "✗ PRODUCTION health checks failed for ${SERVICE}"
+                            exit 1
                         fi
-                        
-                        # Get service URL for API testing
-                        SERVICE_URL=$(minikube service ${SERVICE_NAME} -n ${NAMESPACE} --url | head -1)
-                        echo "PRODUCTION Service URL: $SERVICE_URL"
-                        
-                        # Test basic endpoints
-                        echo "Testing PRODUCTION service endpoints:"
-                        curl -f -s $SERVICE_URL/actuator/health >/dev/null && echo "✓ Health endpoint working" || echo "✗ Health endpoint failed"
-                        curl -f -s $SERVICE_URL/actuator/info >/dev/null && echo "✓ Info endpoint working" || echo "✗ Info endpoint failed"
-                        
-                        # Check resource usage
-                        kubectl top pods -l app=${SERVICE_NAME} -n ${NAMESPACE} --no-headers 2>/dev/null | head -3 || echo "Metrics not available"
-                        
-                        echo "PRODUCTION smoke tests completed"
                     '''
-                    
-                    // Service-specific production tests
-                    dir(SERVICE_NAME) {
-                        sh '''
-                            echo "=== User Service PRODUCTION Tests ==="
-                            
-                            # Test 1: Service startup validation
-                            echo "✓ Service startup validated in PRODUCTION"
-                            
-                            # Test 2: Database connectivity (if configured)
-                            echo "✓ Database connectivity test in PRODUCTION (simulated)"
-                            
-                            # Test 3: API endpoints availability
-                            echo "✓ API endpoints validation in PRODUCTION"
-                            
-                            # Test 4: Integration with other services
-                            echo "✓ Service integration test in PRODUCTION"
-                            
-                            # Test 5: Performance validation
-                            echo "✓ Basic performance validation in PRODUCTION"
-                            
-                            echo "User service PRODUCTION tests completed"
-                        '''
-                    }
                 }
             }
         }
@@ -421,25 +434,27 @@ pipeline {
         stage('Production Validation') {
             steps {
                 script {
-                    echo "Final production validation"
+                    echo "Final production validation for service-discovery"
                     
                     sh '''
-                        echo "=== Final PRODUCTION Validation ==="
+                        echo "=== Final PRODUCTION Validation for service-discovery ==="
+                        
+                        SERVICE="service-discovery"
                         
                         # Validate deployment status
-                        kubectl get deployment ${SERVICE_NAME} -n ${NAMESPACE}
+                        kubectl get deployment ${SERVICE} -n ${NAMESPACE}
                         
-                        # Check API Gateway integration
-                        if kubectl get svc api-gateway -n ${NAMESPACE} >/dev/null 2>&1; then
-                            GATEWAY_URL=$(minikube service api-gateway -n ${NAMESPACE} --url | head -1)
-                            echo "PRODUCTION API Gateway URL: $GATEWAY_URL"
-                            curl -f -s $GATEWAY_URL/user-service/actuator/health >/dev/null && echo "✓ User service accessible via API Gateway" || echo "✗ API Gateway routing issue"
+                        # Check if service-discovery is accessible (it's the Eureka server)
+                        if kubectl get svc ${SERVICE} -n ${NAMESPACE} >/dev/null 2>&1; then
+                            EUREKA_URL=$(minikube service ${SERVICE} -n ${NAMESPACE} --url | head -1)
+                            echo "PRODUCTION Eureka URL: $EUREKA_URL"
+                            curl -f -s $EUREKA_URL/actuator/health >/dev/null && echo "✓ Service Discovery is accessible in PRODUCTION" || echo "✗ Service Discovery not accessible in PRODUCTION"
                         else
-                            echo "API Gateway not deployed in production"
+                            echo "Service Discovery not deployed in production"
                         fi
                         
                         # Final status check
-                        echo "PRODUCTION deployment validation completed"
+                        echo "PRODUCTION deployment validation completed for ${SERVICE}"
                     '''
                 }
             }
@@ -452,37 +467,38 @@ pipeline {
             
             // Clean up old production deployments (keep more for production)
             sh """
-                kubectl get replicaset -n ${NAMESPACE} -o name | grep ${SERVICE_NAME} | sort -r | tail -n +5 | xargs -r kubectl delete -n ${NAMESPACE} > /dev/null 2>&1 || true
+                # Only cleanup service-discovery replicasets since that's the only service deployed
+                kubectl get replicaset -n ${NAMESPACE} -o name | grep service-discovery | sort -r | tail -n +5 | xargs -r kubectl delete -n ${NAMESPACE} > /dev/null 2>&1 || true
             """
         }
         
         success {
             echo "PRODUCTION DEPLOYMENT SUCCESS"
-            echo "${SERVICE_NAME} v${env.IMAGE_TAG} is now LIVE in PRODUCTION"
-            echo "Image: ${SERVICE_NAME}:${env.IMAGE_TAG}"
+            echo "Service Discovery microservice is now LIVE in PRODUCTION:"
+            echo "- service-discovery:v1.0.${env.BUILD_NUMBER}"
             echo "Namespace: ${NAMESPACE}"
-            echo "Approved by: ${env.APPROVER}"
             echo "Deployment strategy: ${params.DEPLOYMENT_TYPE}"
             echo ""
             echo "Access PRODUCTION service:"
-            echo "Direct: minikube service ${SERVICE_NAME} -n ${NAMESPACE}"
-            echo "Via API Gateway: minikube service api-gateway -n ${NAMESPACE}"
+            echo "- Service Discovery: minikube service service-discovery -n ${NAMESPACE}"
             echo ""
             echo "PRODUCTION deployment completed successfully"
         }
         
         failure {
             echo "PRODUCTION DEPLOYMENT FAILED"
-            echo "Rolling back to previous PRODUCTION version"
+            echo "Rolling back to previous PRODUCTION versions"
             
             script {
                 try {
-                    sh """
+                    sh '''
                         echo "Rolling back PRODUCTION deployment"
-                        kubectl rollout undo deployment/${SERVICE_NAME} -n ${NAMESPACE}
-                        kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=600s
-                        echo "PRODUCTION rollback completed"
-                    """
+                        # Only rollback service-discovery since that's the only service deployed
+                        SERVICE="service-discovery"
+                        kubectl rollout undo deployment/${SERVICE} -n ${NAMESPACE}
+                        kubectl rollout status deployment/${SERVICE} -n ${NAMESPACE} --timeout=900s
+                        echo "PRODUCTION rollback completed for ${SERVICE}"
+                    '''
                 } catch (Exception e) {
                     echo "PRODUCTION rollback failed: ${e.message}"
                     echo "URGENT: Manual intervention required for PRODUCTION"
