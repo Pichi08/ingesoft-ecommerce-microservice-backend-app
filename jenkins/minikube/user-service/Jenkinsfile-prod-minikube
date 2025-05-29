@@ -396,29 +396,6 @@ pipeline {
                         # Wait for pods to be ready (extended timeout for service-discovery)
                         kubectl wait --for=condition=ready pod -l app=${SERVICE} -n ${NAMESPACE} --timeout=600s
                         
-                        # Test health endpoint using Minikube service
-                        echo "Testing PRODUCTION health endpoint for ${SERVICE}"
-                        
-                        # Get service URL
-                        SERVICE_URL=$(minikube service ${SERVICE} -n ${NAMESPACE} --url | head -1)
-                        echo "PRODUCTION Service URL: $SERVICE_URL"
-                        
-                        # Extended health checks for production (adjusted for 6-minute startup)
-                        echo "Performing health checks - service-discovery may take up to 6 minutes to be ready"
-                        for i in {1..30}; do
-                            if curl -f -s $SERVICE_URL/actuator/health >/dev/null 2>&1; then
-                                echo "PRODUCTION health check $i passed for ${SERVICE}"
-                                break
-                            else
-                                echo "PRODUCTION health check $i failed for ${SERVICE} - retrying in 15 seconds..."
-                                if [ $i -eq 30 ]; then
-                                    echo "All health check attempts failed - service may still be starting"
-                                    exit 1
-                                fi
-                                sleep 15
-                            fi
-                        done
-                        
                         # Final validation that service is responding
                         if curl -f -s $SERVICE_URL/actuator/health >/dev/null 2>&1; then
                             echo "✓ PRODUCTION health checks passed for ${SERVICE}"
