@@ -7,7 +7,7 @@ pipeline {
     }
     
     environment {
-        SERVICE_NAME = 'user-service'
+        SERVICES = 'user-service,favourite-service,product-service'
         MAVEN_OPTS = '-Xmx512m'  // Reduced for local development
         JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
         MAVEN_HOME = "${HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
@@ -15,27 +15,41 @@ pipeline {
     }
     
     stages {
-        stage('Checkout') {
-            // Run on all branches except main and develop
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
-                    }
-                }
-            }
+        stage('Checkout & Branch Detection') {
             steps {
-                echo "Starting development build for ${SERVICE_NAME}"
-                echo "Branch: ${env.BRANCH_NAME}"
-                echo "Build: ${env.BUILD_NUMBER}"
-                echo "Target: Development validation only (Minikube)"
-                
-                // Clean workspace
+                echo "Starting development build for microservices: ${SERVICES}"
                 cleanWs()
-                
-                // Checkout source code
                 checkout scm
+                
+                script {
+                    Detect branch from git log after checkout
+                    def branchName = env.BRANCH_NAME
+                    
+                    if (!branchName || branchName == 'null') {
+                        // Get branch from git log decorations
+                        def gitLog = sh(script: "git log --oneline --decorate -1", returnStdout: true).trim()
+                        
+                        // Extract branch from origin/branch-name pattern
+                        if (gitLog.contains('origin/develop')) {
+                            branchName = 'develop'
+                        } else if (gitLog.contains('origin/main')) {
+                            branchName = 'main'
+                        } else {
+                            branchName = 'feature-branch'
+                        }
+                    }
+                    
+                    env.DETECTED_BRANCH = branchName
+                    echo "Detected branch: ${env.DETECTED_BRANCH}"
+                    
+                    // Check if this is NOT a feature branch (i.e., it's main or develop)
+                    if (env.DETECTED_BRANCH == 'develop' || env.DETECTED_BRANCH == 'main') {
+                        currentBuild.result = 'NOT_BUILT'
+                        error("Development pipeline only runs on feature branches. Current branch: ${env.DETECTED_BRANCH}")
+                    }
+                    
+                    echo "Branch validation passed - proceeding with feature branch build"
+                }
                 
                 // Verify tools are available
                 sh '''
@@ -47,57 +61,113 @@ pipeline {
             }
         }
         
-        stage('Build Application') {
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
+        stage('Build Applications') {
+            parallel {
+                stage('Build User Service') {
+                    steps {
+                        dir('user-service') {
+                            echo "Building user-service..."
+                            sh 'mvn clean compile -q'
+                        }
                     }
                 }
-            }
-            steps {
-                dir(SERVICE_NAME) {
-                    sh 'mvn clean compile -q'
+                
+                stage('Build favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            echo "Building favourite-service..."
+                            sh 'mvn clean compile -q'
+                        }
+                    }
+                }
+                
+                stage('Build Product Service') {
+                    steps {
+                        dir('product-service') {
+                            echo "Building product-service..."
+                            sh 'mvn clean compile -q'
+                        }
+                    }
                 }
             }
         }
         
         stage('Unit Tests') {
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
+            parallel {
+                stage('Test User Service') {
+                    steps {
+                        dir('user-service') {
+                            echo "Testing user-service..."
+                            sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "user-service/target/surefire-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
                     }
                 }
-            }
-            steps {
-                dir(SERVICE_NAME) {
-                    sh 'mvn test -q'
+                
+                stage('Test Favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            echo "Testing favourite-service..."
+                            sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "favourite-service/target/surefire-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
-            }
-            post {
-                always {
-                    // Publish test results
-                    junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
-                          allowEmptyResults: true
+                
+                stage('Test Product Service') {
+                    steps {
+                        dir('product-service') {
+                            echo "Testing product-service..."
+                            sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "product-service/target/surefire-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
             }
         }
         
-        stage('Package Application') {
-            when {
-                not {
-                    anyOf {
-                        branch 'main'
-                        branch 'develop'
+        stage('Package Applications') {
+            parallel {
+                stage('Package User Service') {
+                    steps {
+                        dir('user-service') {
+                            echo "Packaging user-service..."
+                            sh 'mvn package -DskipTests -q'
+                        }
                     }
                 }
-            }
-            steps {
-                dir(SERVICE_NAME) {
-                    sh 'mvn package -DskipTests -q'
+                
+                stage('Package Favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            echo "Packaging favourite-service..."
+                            sh 'mvn package -DskipTests -q'
+                        }
+                    }
+                }
+                
+                stage('Package Product Service') {
+                    steps {
+                        dir('product-service') {
+                            echo "Packaging product-service..."
+                            sh 'mvn package -DskipTests -q'
+                        }
+                    }
                 }
             }
         }
@@ -110,22 +180,27 @@ pipeline {
         
         success {
             echo """
-DEVELOPMENT BUILD SUCCESS
-Build Summary:
-- Unit tests: PASSED
-- Package validation: PASSED
+                DEVELOPMENT BUILD SUCCESS
+                Services Built: ${SERVICES}
+                Build Summary:
+                - User Service: PASSED
+                - Favourite Service: PASSED
+                - Product Service: PASSED
+                - All unit tests: PASSED
+                - All packages: BUILT
 
-Ready for merge to develop branch.
+                Ready for merge to develop branch.
             """
         }
         
         failure {
             echo "DEVELOPMENT BUILD FAILED - Fix issues before merging to develop"
+            echo "Check individual service logs for specific failures"
         }
         
         unstable {
             echo "Development build is unstable"
-            echo "Some tests may have failed - please review"
+            echo "Some tests may have failed - please review test results"
         }
     }
 } 

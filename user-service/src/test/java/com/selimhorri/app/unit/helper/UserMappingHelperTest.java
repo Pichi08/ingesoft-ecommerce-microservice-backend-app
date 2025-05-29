@@ -1,4 +1,4 @@
-package com.selimhorri.app.helper;
+package com.selimhorri.app.unit.helper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,6 +10,7 @@ import com.selimhorri.app.domain.Credential;
 import com.selimhorri.app.domain.User;
 import com.selimhorri.app.dto.CredentialDto;
 import com.selimhorri.app.dto.UserDto;
+import com.selimhorri.app.helper.UserMappingHelper;
 
 class UserMappingHelperTest {
 

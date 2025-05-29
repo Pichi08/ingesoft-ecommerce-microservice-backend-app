@@ -1,4 +1,4 @@
-package com.selimhorri.app.service.impl;
+package com.selimhorri.app.unit.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,6 +22,7 @@ import com.selimhorri.app.dto.CategoryDto;
 import com.selimhorri.app.dto.ProductDto;
 import com.selimhorri.app.exception.wrapper.ProductNotFoundException;
 import com.selimhorri.app.repository.ProductRepository;
+import com.selimhorri.app.service.impl.ProductServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceImplTest {
