@@ -12,7 +12,7 @@ pipeline {
     }
     
     environment {
-        SERVICE_NAME = 'user-service'
+        SERVICES = 'user-service,favourite-service,product-service,cloud-config,service-discovery'
         MAVEN_OPTS = '-Xmx512m'
         JAVA_HOME = sh(script: '/usr/libexec/java_home -v 11', returnStdout: true).trim()
         MAVEN_HOME = "${HOME}/.jenkins/tools/hudson.tasks.Maven_MavenInstallation/Maven-3.9"
@@ -22,7 +22,7 @@ pipeline {
     stages {
         stage('Checkout & Branch Detection') {
             steps {
-                echo "Starting staging build for ${SERVICE_NAME}"
+                echo "Starting staging build for microservices: ${SERVICES}"
                 cleanWs()
                 checkout scm
                 
@@ -75,24 +75,127 @@ pipeline {
         
         stage('Build & Test') {
             parallel {
-                stage('Build Application') {
-                    steps {
-                        dir(SERVICE_NAME) {
-                            sh 'mvn clean compile -q'
+                stage('Build & Test User Service') {
+                    stages {
+                        stage('Build User Service') {
+                            steps {
+                                dir('user-service') {
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test User Service') {
+                            steps {
+                                dir('user-service') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "user-service/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
                         }
                     }
                 }
                 
-                stage('Unit Tests') {
-                    steps {
-                        dir(SERVICE_NAME) {
-                            sh 'mvn test -q'
+                stage('Build & Test Favourite Service') {
+                    stages {
+                        stage('Build Favourite Service') {
+                            steps {
+                                dir('favourite-service') {
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test Favourite Service') {
+                            steps {
+                                dir('favourite-service') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "favourite-service/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
                         }
                     }
-                    post {
-                        always {
-                            junit testResults: "${SERVICE_NAME}/target/surefire-reports/TEST-*.xml",
-                                  allowEmptyResults: true
+                }
+                
+                stage('Build & Test Product Service') {
+                    stages {
+                        stage('Build Product Service') {
+                            steps {
+                                dir('product-service') {
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test Product Service') {
+                            steps {
+                                dir('product-service') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "product-service/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                stage('Build & Test Cloud Config') {
+                    stages {
+                        stage('Build Cloud Config') {
+                            steps {
+                                dir('cloud-config') {
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test Cloud Config') {
+                            steps {
+                                dir('cloud-config') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "cloud-config/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                stage('Build & Test Service Discovery') {
+                    stages {
+                        stage('Build Service Discovery') {
+                            steps {
+                                dir('service-discovery') {
+                                    sh 'mvn clean compile -q'
+                                }
+                            }
+                        }
+                        stage('Unit Test Service Discovery') {
+                            steps {
+                                dir('service-discovery') {
+                                    sh 'mvn test -Dtest="**/unit/**/*Test*" -q'
+                                }
+                            }
+                            post {
+                                always {
+                                    junit testResults: "service-discovery/target/surefire-reports/TEST-*.xml",
+                                          allowEmptyResults: true
+                                }
+                            }
                         }
                     }
                 }
@@ -100,41 +203,198 @@ pipeline {
         }
         
         stage('Integration Tests') {
-            steps {
-                dir(SERVICE_NAME) {
-                    sh 'mvn verify -Dspring.profiles.active=test -q'
+            parallel {
+                stage('Integration Test User Service') {
+                    steps {
+                        dir('user-service') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "user-service/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
-            }
-            post {
-                always {
-                    junit testResults: "${SERVICE_NAME}/target/failsafe-reports/TEST-*.xml",
-                          allowEmptyResults: true
+                
+                stage('Integration Test Favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "favourite-service/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
+                }
+                
+                stage('Integration Test Product Service') {
+                    steps {
+                        dir('product-service') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "product-service/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
+                }
+                
+                stage('Integration Test Cloud Config') {
+                    steps {
+                        dir('cloud-config') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "cloud-config/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
+                }
+                
+                stage('Integration Test Service Discovery') {
+                    steps {
+                        dir('service-discovery') {
+                            sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
+                        }
+                    }
+                    post {
+                        always {
+                            junit testResults: "service-discovery/target/failsafe-reports/TEST-*.xml",
+                                  allowEmptyResults: true
+                        }
+                    }
                 }
             }
         }
         
-        stage('Package & Build Image') {
-            steps {
-                dir(SERVICE_NAME) {
-                    script {
-                        // Package the application
-                        sh 'mvn package -DskipTests -q'
-                        
-                        // Build single Docker image with current build number
-                        def imageTag = "stage-${env.BUILD_NUMBER}"
-                        
-                        sh """
-                            # Use Minikube's Docker daemon
-                            eval \$(minikube docker-env)
-                            
-                            # Build Docker image with single tag
-                            docker build -t ${SERVICE_NAME}:${imageTag} .
-                            
-                            echo "Docker image built: ${SERVICE_NAME}:${imageTag}"
-                        """
-                        
-                        // Store image tag for reference
-                        env.IMAGE_TAG = imageTag
+        stage('Package & Build Images') {
+            parallel {
+                stage('Package & Build User Service') {
+                    steps {
+                        dir('user-service') {
+                            script {
+                                // Package the application
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with current build number
+                                def imageTag = "stage-${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image with single tag
+                                    docker build -t user-service:${imageTag} .
+                                    
+                                    echo "Docker image built: user-service:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Favourite Service') {
+                    steps {
+                        dir('favourite-service') {
+                            script {
+                                // Package the application
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with current build number
+                                def imageTag = "stage-${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image with single tag
+                                    docker build -t favourite-service:${imageTag} .
+                                    
+                                    echo "Docker image built: favourite-service:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Product Service') {
+                    steps {
+                        dir('product-service') {
+                            script {
+                                // Package the application
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with current build number
+                                def imageTag = "stage-${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image with single tag
+                                    docker build -t product-service:${imageTag} .
+                                    
+                                    echo "Docker image built: product-service:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Cloud Config') {
+                    steps {
+                        dir('cloud-config') {
+                            script {
+                                // Package the application
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with current build number
+                                def imageTag = "stage-${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image with single tag
+                                    docker build -t cloud-config:${imageTag} .
+                                    
+                                    echo "Docker image built: cloud-config:${imageTag}"
+                                """
+                            }
+                        }
+                    }
+                }
+                
+                stage('Package & Build Service Discovery') {
+                    steps {
+                        dir('service-discovery') {
+                            script {
+                                // Package the application
+                                sh 'mvn package -DskipTests -q'
+                                
+                                // Build Docker image with current build number
+                                def imageTag = "stage-${env.BUILD_NUMBER}"
+                                
+                                sh """
+                                    # Use Minikube's Docker daemon
+                                    eval \$(minikube docker-env)
+                                    
+                                    # Build Docker image with single tag
+                                    docker build -t service-discovery:${imageTag} .
+                                    
+                                    echo "Docker image built: service-discovery:${imageTag}"
+                                """
+                            }
+                        }
                     }
                 }
             }
@@ -149,13 +409,20 @@ pipeline {
         success {
             echo """
                 STAGING BUILD SUCCESS
-                Image: ${SERVICE_NAME}:${env.IMAGE_TAG}
+                Services: ${SERVICES}
+                Images Built:
+                - user-service:stage-${env.BUILD_NUMBER}
+                - favourite-service:stage-${env.BUILD_NUMBER}
+                - product-service:stage-${env.BUILD_NUMBER}
+                - cloud-config:stage-${env.BUILD_NUMBER}
+                - service-discovery:stage-${env.BUILD_NUMBER}
+                
                 Build Summary:
                 - Unit tests: PASSED
                 - Integration tests: PASSED  
-                - Docker image: BUILT
+                - Docker images: BUILT
 
-                Image ready for production deployment.
+                All images ready for production deployment.
             """
         }
         
@@ -166,7 +433,9 @@ pipeline {
                 try {
                     sh '''
                         eval $(minikube docker-env) 2>/dev/null || true
-                        docker ps -a | grep ${SERVICE_NAME} | awk '{print $1}' | xargs -r docker rm -f >/dev/null 2>&1 || true
+                        for service in user-service favourite-service product-service cloud-config service-discovery; do
+                            docker ps -a | grep $service | awk '{print $1}' | xargs -r docker rm -f >/dev/null 2>&1 || true
+                        done
                     '''
                 } catch (Exception e) {
                     // Cleanup completed silently
