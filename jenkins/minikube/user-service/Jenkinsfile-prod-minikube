@@ -114,6 +114,7 @@ pipeline {
                                     sh 'mvn clean compile -q'
                                 }
                             }
+                            
                         }
                         stage('Unit Test Favourite Service') {
                             steps {
