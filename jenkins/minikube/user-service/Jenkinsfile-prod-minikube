@@ -361,7 +361,7 @@ pipeline {
                         else
                             echo "Creating new PRODUCTION deployment for ${SERVICE}"
                             # Apply Kubernetes manifests to production
-                            kubectl apply -f k8s/minikube/services/${SERVICE}/ -n ${NAMESPACE}
+                            kubectl apply -f k8s/minikube/infrastructure/${SERVICE}/ -n ${NAMESPACE}
                             
                             # Update image in the deployment
                             kubectl set image deployment/${SERVICE} ${SERVICE}=${SERVICE}:v1.0.${BUILD_NUMBER} -n ${NAMESPACE}
