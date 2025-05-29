@@ -63,7 +63,7 @@ pipeline {
                     # Ensure minikube is running
                     if ! minikube status >/dev/null 2>&1; then
                         echo "Starting minikube..."
-                        minikube start --driver=docker --container-runtime=docker --memory=4096 --cpus=2
+                        minikube start 
                     fi
                     
                     # Configure Docker to use Minikube's daemon
