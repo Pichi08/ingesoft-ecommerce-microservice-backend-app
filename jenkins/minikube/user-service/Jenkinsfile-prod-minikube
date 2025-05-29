@@ -187,7 +187,7 @@ pipeline {
                                   allowEmptyResults: true
                         }
                     }
-                    
+
                 }
             }
         }
@@ -308,7 +308,8 @@ pipeline {
                                     docker build -t service-discovery:${imageTag} .
                                     
                                     echo "PRODUCTION Docker image built: service-discovery:${imageTag}"
-                                """
+                                """ 
+
                             }
                         }
                     }
