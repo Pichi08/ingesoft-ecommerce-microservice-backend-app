@@ -187,6 +187,7 @@ pipeline {
                                   allowEmptyResults: true
                         }
                     }
+                    
                 }
             }
         }
@@ -351,7 +352,7 @@ pipeline {
                     currentBuild.description = "Production Release ${releaseVersion} - service-discovery deployed"
                     
                     echo "Release notes generated with convco and archived as build artifact"
-                    
+
                 }
             }
         }
