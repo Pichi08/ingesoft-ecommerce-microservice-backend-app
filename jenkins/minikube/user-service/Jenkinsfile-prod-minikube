@@ -175,15 +175,15 @@ pipeline {
                     }
                 }
                 
-                stage('Integration Test Favourite Service') {
+                stage('Integration Test Product Service') {
                     steps {
-                        dir('favourite-service') {
+                        dir('product-service') {
                             sh 'mvn verify -Dtest="**/integration/**/*Test*" -Dspring.profiles.active=test -q'
                         }
                     }
                     post {
                         always {
-                            junit testResults: "favourite-service/target/failsafe-reports/TEST-*.xml",
+                            junit testResults: "product-service/target/failsafe-reports/TEST-*.xml",
                                   allowEmptyResults: true
                         }
                     }
