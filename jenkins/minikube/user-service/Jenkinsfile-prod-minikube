@@ -19,6 +19,7 @@ pipeline {
     // GitHub webhook trigger for main branch
     triggers {
         githubPush()
+        
     }
 
     stages {
