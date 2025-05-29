@@ -396,6 +396,31 @@ pipeline {
                         # Wait for pods to be ready (extended timeout for service-discovery)
                         kubectl wait --for=condition=ready pod -l app=${SERVICE} -n ${NAMESPACE} --timeout=600s
                         
+                        # Test health endpoint using Minikube service
+                        echo "Testing PRODUCTION health endpoint for ${SERVICE}"
+                        
+                        # Get service URL using kubectl (more reliable than minikube service --url)
+                        MINIKUBE_IP=$(minikube ip)
+                        NODE_PORT=$(kubectl get svc ${SERVICE} -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
+                        SERVICE_URL="http://${MINIKUBE_IP}:${NODE_PORT}"
+                        echo "PRODUCTION Service URL: $SERVICE_URL"
+                        
+                        # Extended health checks for production (adjusted for 6-minute startup)
+                        echo "Performing health checks - service-discovery may take up to 6 minutes to be ready"
+                        for i in {1..30}; do
+                            if curl -f -s $SERVICE_URL/actuator/health >/dev/null 2>&1; then
+                                echo "PRODUCTION health check $i passed for ${SERVICE}"
+                                break
+                            else
+                                echo "PRODUCTION health check $i failed for ${SERVICE} - retrying in 15 seconds..."
+                                if [ $i -eq 30 ]; then
+                                    echo "All health check attempts failed - service may still be starting"
+                                    exit 1
+                                fi
+                                sleep 15
+                            fi
+                        done
+                        
                         # Final validation that service is responding
                         if curl -f -s $SERVICE_URL/actuator/health >/dev/null 2>&1; then
                             echo "✓ PRODUCTION health checks passed for ${SERVICE}"
@@ -423,7 +448,9 @@ pipeline {
                         
                         # Check if service-discovery is accessible (it's the Eureka server)
                         if kubectl get svc ${SERVICE} -n ${NAMESPACE} >/dev/null 2>&1; then
-                            EUREKA_URL=$(minikube service ${SERVICE} -n ${NAMESPACE} --url | head -1)
+                            MINIKUBE_IP=$(minikube ip)
+                            NODE_PORT=$(kubectl get svc ${SERVICE} -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')
+                            EUREKA_URL="http://${MINIKUBE_IP}:${NODE_PORT}"
                             echo "PRODUCTION Eureka URL: $EUREKA_URL"
                             curl -f -s $EUREKA_URL/actuator/health >/dev/null && echo "✓ Service Discovery is accessible in PRODUCTION" || echo "✗ Service Discovery not accessible in PRODUCTION"
                         else
@@ -457,7 +484,9 @@ pipeline {
             echo "Deployment strategy: ${params.DEPLOYMENT_TYPE}"
             echo ""
             echo "Access PRODUCTION service:"
-            echo "- Service Discovery: minikube service service-discovery -n ${NAMESPACE}"
+            echo "- Get Service Discovery URL: minikube ip && kubectl get svc service-discovery -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'"
+            echo "- Then access via: http://<minikube-ip>:<node-port>"
+            echo "- Alternative: kubectl port-forward svc/service-discovery 8761:8761 -n ${NAMESPACE}"
             echo ""
             echo "PRODUCTION deployment completed successfully"
         }
