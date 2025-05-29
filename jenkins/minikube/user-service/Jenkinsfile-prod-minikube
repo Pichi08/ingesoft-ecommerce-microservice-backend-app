@@ -485,6 +485,7 @@ pipeline {
                 } catch (Exception e) {
                     echo "PRODUCTION rollback failed: ${e.message}"
                     echo "URGENT: Manual intervention required for PRODUCTION"
+                    
                 }
             }
         }
