@@ -239,7 +239,7 @@ jenkins/
 
 **Visualización Jenkins:**
 
-![Visualización Status pipeline](resources/11.png)
+![Visualización Status pipeline](resources/18.png)
 *Figura 11: Visualización Status pipeline*
 
 ![Pipeline Overview](resources/12.png)
@@ -416,4 +416,30 @@ Este proyecto demostró exitosamente la implementación completa de un ecosistem
 - Resource optimization
 - Technical documentation
 
+---
+# Release Notes Generado con Convco (Se puede ver en la Figura 11)
+
+## Unreleased (2025-05-29)
+
+### Features
+
+* final project report
+([1fefb16](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/1fefb161affc6ef3ca9dcd5761a1853293dc184c))
+* add github trigger for all three pipelines
+([1a7d7dd](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/1a7d7dd9d485d58c403167716a6cde9b3d8fbb53))
+* add deployment in minikube for service discovery
+([ec23d8b](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/ec23d8b873a025e0a5e6331680b4493e8b31f680))
+* generate release notes
+([7d33f31](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/7d33f31206d6cd347f4d71505378e12bab803bc3))
+
+### Fixes
+
+* parallel run for unit and integration tests
+([11fe0e9](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/11fe0e924e9eccf2c86f55070678a3a28553b5ee))
+* branch detection for github trigger
+([daa97f3](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/daa97f396ebf915ad2047649149087e3ff335341))
+* change favourite service integration test for product service
+([56c853c](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/56c853cb465deb4cf79ebbd92cfdb34089759a91))
+* health endpoint test removed
+([b93f942](https://github.com/Pichi08/ingesoft-ecommerce-microservice-backend-app/commit/b93f9427bbe089695708306d18f0ca3ce673ad7d))
 
